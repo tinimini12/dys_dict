@@ -16,7 +16,13 @@
 
 const DEFAULT_MODEL = "gpt-5-mini";
 const MAX_PROMPT_CHARS = 8000;     // guards against someone sending huge/abusive requests
-const MAX_TOKENS_CAP = 1500;       // hard ceiling regardless of what the client asks for
+const MAX_TOKENS_CAP = 3000;       // hard ceiling regardless of what the client asks for
+// gpt-5-family models spend part of max_completion_tokens on invisible internal
+// reasoning before writing the visible reply -- for straightforward tasks like
+// ours (read a sentence, return small JSON) that reasoning is pure overhead and
+// can even eat the whole budget, leaving an empty reply. "minimal" tells the
+// model to skip most of that and go straight to answering.
+const REASONING_EFFORT = "minimal";
 
 export default {
   async fetch(request, env) {
@@ -69,6 +75,7 @@ export default {
           // require "max_completion_tokens" instead (OpenAI returns a
           // clear "unsupported_parameter" error if you get this wrong).
           max_completion_tokens: maxTokens,
+          reasoning_effort: REASONING_EFFORT,
           messages: [{ role: "user", content: prompt }],
         }),
       });
