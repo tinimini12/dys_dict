@@ -1,0 +1,1094 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Second Look</title>
+<meta name="description" content="A dyslexia-friendly writing checker that gives hints instead of fixes, reads suggestions aloud, and tracks a student's progress over time.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Lexend:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FAF6EE; --surface:#FFFFFF; --surface-2:#F1EAD9; --border:#E4D9C3;
+  --text:#2B2620; --text-muted:#6B6152;
+  --accent:#2F6F63; --accent-strong:#245650; --accent-contrast:#FFFFFF; --accent-soft:#DCEEE9;
+  --warn:#C1543F; --warn-soft:#F6E1DC;
+  --info:#3A6EA5; --info-soft:#DEE9F4;
+  --special:#7A5CA6; --special-soft:#EBE2F5;
+  --confusable:#A9781F; --confusable-soft:#F3E7CB;
+  --success:#2E7D4F; --success-soft:#DFF0E4;
+  --shadow: rgba(43,38,32,0.10);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1D1A15; --surface:#272319; --surface-2:#332C1F; --border:#463D2C;
+    --text:#F2EBDA; --text-muted:#B8AD97;
+    --accent:#5FBBA6; --accent-strong:#8AD3C2; --accent-contrast:#0F241F; --accent-soft:#23423A;
+    --warn:#E28A75; --warn-soft:#3B2620;
+    --info:#8DB8E6; --info-soft:#22344A;
+    --special:#C4A9E8; --special-soft:#332A47;
+    --confusable:#E0B75E; --confusable-soft:#3B301A;
+    --success:#86D3A6; --success-soft:#1E3A2A;
+    --shadow: rgba(0,0,0,0.45);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1D1A15; --surface:#272319; --surface-2:#332C1F; --border:#463D2C;
+  --text:#F2EBDA; --text-muted:#B8AD97;
+  --accent:#5FBBA6; --accent-strong:#8AD3C2; --accent-contrast:#0F241F; --accent-soft:#23423A;
+  --warn:#E28A75; --warn-soft:#3B2620;
+  --info:#8DB8E6; --info-soft:#22344A;
+  --special:#C4A9E8; --special-soft:#332A47;
+  --confusable:#E0B75E; --confusable-soft:#3B301A;
+  --success:#86D3A6; --success-soft:#1E3A2A;
+  --shadow: rgba(0,0,0,0.45);
+}
+
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:"Lexend","Atkinson Hyperlegible",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,.brand,button,.tab{font-family:"Baloo 2","Lexend",system-ui,sans-serif;}
+h1,h2,h3{text-wrap:balance; margin:0;}
+
+.wrap{max-width:820px; margin:0 auto; padding:28px 20px 80px;}
+
+header.top{
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  margin-bottom:22px; flex-wrap:wrap;
+}
+.brand{display:flex; align-items:center; gap:10px;}
+.brand .mark{
+  width:40px; height:40px; border-radius:12px; background:var(--accent);
+  display:flex; align-items:center; justify-content:center; color:var(--accent-contrast);
+  font-size:20px; flex:none; box-shadow:0 2px 6px var(--shadow);
+}
+.brand h1{font-size:22px; font-weight:700; letter-spacing:.2px;}
+.brand p{margin:2px 0 0; font-size:13px; color:var(--text-muted); font-family:"Lexend",sans-serif;}
+
+.tabs{display:flex; gap:6px; background:var(--surface-2); padding:4px; border-radius:12px; border:1px solid var(--border);}
+.tab{
+  border:none; background:transparent; color:var(--text-muted); padding:9px 16px; border-radius:9px;
+  font-size:14px; font-weight:600; cursor:pointer; transition:background .15s,color .15s;
+}
+.tab[aria-selected="true"]{background:var(--accent); color:var(--accent-contrast);}
+.tab:not([aria-selected="true"]):hover{color:var(--text);}
+
+.card{
+  background:var(--surface); border:1px solid var(--border); border-radius:18px;
+  padding:22px; box-shadow:0 2px 10px var(--shadow);
+}
+.card + .card{margin-top:18px;}
+
+.view{display:none;}
+.view.active{display:block;}
+
+/* --- write view --- */
+.editor-toolbar{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; flex-wrap:wrap;}
+.wordcount{font-size:12.5px; color:var(--text-muted); font-variant-numeric:tabular-nums;}
+
+textarea#editor{
+  width:100%; min-height:180px; resize:vertical; border-radius:14px; border:1.5px solid var(--border);
+  background:var(--surface-2); color:var(--text); padding:16px 18px; font:inherit; font-size:17px; line-height:1.65;
+  font-family:"Lexend",sans-serif;
+}
+textarea#editor:focus{outline:2px solid var(--accent); outline-offset:1px;}
+
+.reviewed{
+  width:100%; min-height:180px; border-radius:14px; border:1.5px solid var(--border);
+  background:var(--surface-2); color:var(--text); padding:16px 18px; font-size:17px; line-height:1.9;
+  font-family:"Lexend",sans-serif; white-space:pre-wrap;
+}
+.reviewed mark{
+  background:transparent; color:inherit; cursor:pointer; padding:0 1px; border-radius:3px;
+  border-bottom:3px solid var(--flag-color, var(--warn)); text-decoration:none;
+  transition:background .12s;
+}
+.reviewed mark:hover{background:var(--flag-soft, var(--warn-soft));}
+.reviewed mark.resolved{border-bottom-style:dotted; opacity:.55;}
+.reviewed mark.f-spelling{--flag-color:var(--warn); --flag-soft:var(--warn-soft);}
+.reviewed mark.f-grammar{--flag-color:var(--info); --flag-soft:var(--info-soft);}
+.reviewed mark.f-punctuation{--flag-color:var(--special); --flag-soft:var(--special-soft);}
+.reviewed mark.f-confusable, .reviewed mark.f-word_choice{--flag-color:var(--confusable); --flag-soft:var(--confusable-soft);}
+.reviewed mark.f-ask{--flag-color:var(--accent); --flag-soft:var(--accent-soft);}
+.reviewed .askword{cursor:pointer; border-radius:3px;}
+.reviewed .askword:hover{background:var(--accent-soft);}
+
+.btnrow{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; align-items:center;}
+button.btn{
+  font-size:14.5px; font-weight:600; border-radius:11px; padding:11px 18px; cursor:pointer;
+  border:1.5px solid transparent; transition:transform .08s, background .15s, border-color .15s;
+  display:inline-flex; align-items:center; gap:7px;
+}
+button.btn:active{transform:translateY(1px);}
+button.btn.primary{background:var(--accent); color:var(--accent-contrast);}
+button.btn.primary:hover{background:var(--accent-strong);}
+button.btn.ghost{background:transparent; border-color:var(--border); color:var(--text);}
+button.btn.ghost:hover{border-color:var(--accent); color:var(--accent);}
+button.btn:disabled{opacity:.5; cursor:not-allowed;}
+button.iconbtn{background:transparent;border:1.5px solid var(--border);border-radius:9px;width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text);font-size:15px;}
+button.iconbtn:hover{border-color:var(--accent); color:var(--accent);}
+
+.optionrow{display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--text-muted); margin-top:10px;}
+.optionrow input{accent-color:var(--accent);}
+
+.status{font-size:13.5px; color:var(--text-muted); margin-top:10px; min-height:18px; display:flex; align-items:center; gap:8px;}
+.status.busy::before{
+  content:""; width:13px; height:13px; border-radius:50%; border:2px solid var(--border); border-top-color:var(--accent);
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+.banner{
+  margin-top:12px; padding:10px 14px; border-radius:10px; font-size:13.5px; display:flex; gap:8px; align-items:flex-start;
+}
+.banner.warn{background:var(--warn-soft); color:var(--warn);}
+.banner.info{background:var(--info-soft); color:var(--info);}
+
+/* legend */
+.legend{display:flex; gap:14px; flex-wrap:wrap; margin-top:14px; font-size:12.5px; color:var(--text-muted);}
+.legend span{display:inline-flex; align-items:center; gap:6px;}
+.legend i{width:14px; height:6px; border-radius:3px; display:inline-block;}
+
+/* popover */
+.overlay{position:fixed; inset:0; background:rgba(20,17,12,.32); display:none; align-items:flex-end; justify-content:center; z-index:40; padding:0;}
+.overlay.show{display:flex;}
+@media (min-width:640px){ .overlay{align-items:center;} }
+.pop{
+  background:var(--surface); border:1px solid var(--border); border-radius:20px 20px 0 0; width:100%; max-width:480px;
+  padding:22px; box-shadow:0 -8px 30px var(--shadow); max-height:85vh; overflow:auto;
+}
+@media (min-width:640px){ .pop{border-radius:20px; margin-bottom:40px;} }
+.pop .kind{
+  display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px;
+  padding:4px 10px; border-radius:999px; margin-bottom:12px;
+}
+.pop .original{font-size:19px; margin:4px 0 10px; font-weight:600;}
+.pop .original s{color:var(--warn); text-decoration-color:var(--warn);}
+.pop .explain{font-size:15px; line-height:1.6; color:var(--text); margin-bottom:16px;}
+.pop label{font-size:13px; color:var(--text-muted); display:block; margin-bottom:6px;}
+.pop input[type=text]{
+  width:100%; padding:12px 14px; border-radius:11px; border:1.5px solid var(--border); background:var(--surface-2);
+  color:var(--text); font-size:16px; font-family:"Lexend",sans-serif;
+}
+.pop input[type=text]:focus{outline:2px solid var(--accent);}
+.pop .feedback{margin-top:10px; font-size:14px; min-height:20px;}
+.pop .feedback.good{color:var(--success);}
+.pop .feedback.bad{color:var(--warn);}
+.pop .popbtns{display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;}
+.pop .reveal-box{margin-top:12px; padding:12px 14px; background:var(--success-soft); border-radius:11px; font-size:15px; display:none;}
+.pop .reveal-box.show{display:block;}
+.pop .closebar{display:flex; justify-content:flex-end; margin-bottom:-6px;}
+.pop .voice-hint{
+  display:flex; align-items:center; gap:8px; margin-top:14px; padding:10px 12px;
+  background:var(--accent-soft); border-radius:11px; font-size:13.5px; color:var(--accent-strong);
+}
+button.btn.mic.listening{background:var(--warn); border-color:var(--warn); color:#fff; animation:micpulse 1s ease-in-out infinite;}
+@keyframes micpulse{0%,100%{opacity:1;}50%{opacity:.6;}}
+
+/* progress view */
+.stat-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:6px;}
+.stat{background:var(--surface-2); border:1px solid var(--border); border-radius:14px; padding:14px 16px;}
+.stat .num{font-size:26px; font-weight:700; font-variant-numeric:tabular-nums; color:var(--accent-strong);}
+.stat .lbl{font-size:12.5px; color:var(--text-muted); margin-top:2px;}
+.chart-wrap{margin-top:8px;}
+.chart-wrap h3, .breakdown h3{font-size:14px; margin-bottom:10px; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:.4px;}
+.bars{display:flex; flex-direction:column; gap:10px;}
+.bar-row{display:grid; grid-template-columns:100px 1fr 34px; align-items:center; gap:10px; font-size:13.5px;}
+.bar-track{background:var(--surface-2); border-radius:999px; height:10px; overflow:hidden;}
+.bar-fill{height:100%; border-radius:999px;}
+.empty-state{color:var(--text-muted); font-size:14.5px; text-align:center; padding:30px 10px;}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="mark">✎</div>
+      <div>
+        <h1>Second Look</h1>
+        <p>Catches mistakes, teaches you to fix them yourself.</p>
+      </div>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-view="write">Write</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="progress">My Progress</button>
+    </div>
+  </header>
+
+  <div id="view-write" class="view active">
+    <div class="card">
+      <div class="editor-toolbar">
+        <span class="wordcount" id="wordcount">0 words</span>
+        <button class="iconbtn" id="btnReadAloud" title="Read my paragraph aloud" aria-label="Read my paragraph aloud">🔊</button>
+      </div>
+
+      <textarea id="editor" placeholder="Type or paste your paragraph here. When you're ready, press Check my writing." spellcheck="false"></textarea>
+      <div id="reviewed" class="reviewed" style="display:none;" aria-live="polite"></div>
+
+      <div class="btnrow">
+        <button class="btn primary" id="btnCheck">🔎 Check my writing</button>
+        <button class="btn ghost" id="btnEditAgain" style="display:none;">✏️ Edit again</button>
+        <button class="btn ghost" id="btnFinish" style="display:none;">✅ Finish &amp; save progress</button>
+      </div>
+
+      <div class="optionrow">
+        <input type="checkbox" id="useAI" checked>
+        <label for="useAI">Use the deeper AI check for tricky mix-ups (takes up to a minute)</label>
+      </div>
+
+      <div class="status" id="status"></div>
+      <div id="banners"></div>
+
+      <div class="legend">
+        <span><i style="background:var(--warn)"></i> Spelling</span>
+        <span><i style="background:var(--info)"></i> Grammar</span>
+        <span><i style="background:var(--special)"></i> Punctuation</span>
+        <span><i style="background:var(--confusable)"></i> Wrong word</span>
+      </div>
+      <div class="legend" style="margin-top:6px;">
+        <span>💡 Any word can be clicked — ask about one we didn't flag, then type or say what you meant.</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-progress" class="view">
+    <div class="card">
+      <div class="stat-grid" id="statGrid"></div>
+    </div>
+    <div class="card chart-wrap">
+      <h3>Self-correction rate over time</h3>
+      <div id="chart"></div>
+    </div>
+    <div class="card breakdown">
+      <h3>What tends to trip you up</h3>
+      <div class="bars" id="bars"></div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="pop" id="pop">
+    <div class="closebar"><button class="iconbtn" id="popClose" aria-label="Close">✕</button></div>
+    <span class="kind" id="popKind"></span>
+    <div class="original" id="popOriginal"></div>
+    <div class="explain" id="popExplain"></div>
+    <label for="popInput">Type your fix, or say it out loud:</label>
+    <input type="text" id="popInput" autocomplete="off">
+    <div class="feedback" id="popFeedback"></div>
+    <div class="reveal-box" id="popReveal"></div>
+    <div class="voice-hint" id="popVoiceHint" style="display:none;">
+      🎤 Not sure what word you meant? Press “Say it” and speak the word out loud — that often catches things spelling alone misses.
+    </div>
+    <div class="popbtns">
+      <button class="btn primary" id="popTry">Check my fix</button>
+      <button class="btn ghost mic" id="popMic">🎤 Say it</button>
+      <button class="btn ghost" id="popHear">🔊 Hear it</button>
+      <button class="btn ghost" id="popShow">Show me</button>
+      <button class="btn ghost" id="popSkip">Skip</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------------- backend config ----------------
+   Second Look needs a tiny server-side piece for the AI check, because a
+   public page can't hold a real Anthropic API key (anyone viewing the page's
+   source could steal it and run up your bill). worker.js in this same
+   folder is that server-side piece -- deploy it once (see README-deploy.md),
+   then paste the URL it gives you below. Until you do, the AI check quietly
+   stays off and only the free instant/local check runs. */
+var WORKER_URL = "https://YOUR-WORKER-SUBDOMAIN.workers.dev";
+function aiConfigured(){ return WORKER_URL && WORKER_URL.indexOf("YOUR-WORKER") === -1; }
+
+function parseJsonLoose(text){
+  if (!text) throw new Error("empty AI response");
+  var m = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (m) text = m[1];
+  var start = text.search(/[\[{]/);
+  if (start === -1) throw new Error("no JSON found in AI response");
+  return JSON.parse(text.slice(start));
+}
+async function callAI(prompt, model, maxTokens){
+  var resp;
+  try {
+    resp = await fetch(WORKER_URL + "/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: prompt, model: model, maxTokens: maxTokens })
+    });
+  } catch(e){
+    var neterr = new Error("network error reaching AI backend");
+    neterr.status = 0;
+    throw neterr;
+  }
+  if (!resp.ok){
+    var err = new Error("AI backend returned " + resp.status);
+    err.status = resp.status;
+    throw err;
+  }
+  var data = await resp.json();
+  return parseJsonLoose(data.text || "");
+}
+
+/* ---------------- data: local dictionary + confusable pairs ---------------- */
+var DICTIONARY = ["a","aa","aaron","ab","abandon","abandoned","abc","abilities","ability","able","aboard","abortion","about","above","abroad","absence","absolute","absolutely","abstract","abu","abuse","ac","academic","academy","accent","accept","acceptable","acceptance","accepted","accepting","access","accessible","accident","accidentally","accidents","accommodate","accommodation","accompanied","accomplish","accomplished","accordance","according","accordingly","account","accounting","accounts","accuracy","accurate","accused","ace","achieve","achieved","achievement","achievements","achieving","acid","acknowledge","acknowledged","acquire","acquired","acquisition","acres","across","act","acted","acting","action","actions","activated","active","actively","activist","activists","activities","activity","actor","actors","actress","acts","actual","actually","ad","adam","adams","adaptation","adapted","add","added","addiction","adding","addition","additional","additionally","address","addressed","addresses","addressing","adds","adequate","adjacent","adjust","adjusted","administration","administrative","administrator","admission","admit","admitted","adopt","adopted","adoption","adorable","ads","adult","adults","advance","advanced","advances","advantage","advantages","adventure","adventures","advertising","advice","advise","advised","advisor","advisory","advocate","aesthetic","affair","affairs","affect","affected","affecting","affects","afford","affordable","afghanistan","afraid","africa","african","after","afternoon","afterwards","again","against","age","aged","agencies","agency","agenda","agent","agents","ages","aggressive","aging","ago","agree","agreed","agreement","agreements","agrees","agricultural","agriculture","ah","ahead","ai","aid","aids","aim","aimed","aims","ain't","air","aircraft","airline","airlines","airport","aka","al","alabama","alan","alarm","alaska","albert","album","albums","alcohol","alert","alex","alexander","algorithm","ali","alice","alien","aliens","alike","alive","all","allegations","alleged","allegedly","allen","alliance","allied","allies","allow","allowed","allowing","allows","ally","almost","alone","along","alongside","alpha","already","alright","also","alter","altered","alternate","alternative","alternatives","although","altogether","aluminum","always","am","amateur","amazed","amazing","amazon","ambassador","ambulance","amendment","america","america's","american","americans","among","amongst","amount","amounts","amsterdam","amy","an","analysis","analyst","anchor","ancient","and","anderson","andrew","android","andy","angel","angela","angeles","angels","anger","angle","angry","animal","animals","animated","animation","anime","ann","anna","anne","anniversary","announce","announced","announcement","annoying","annual","annually","anonymous","another","answer","answered","answering","answers","anthony","anti","anticipated","antonio","anxiety","anxious","any","anybody","anymore","anyone","anything","anytime","anyway","anyways","anywhere","ap","apart","apartment","apartments","apologize","apology","app","apparent","apparently","appeal","appeals","appear","appearance","appearances","appeared","appearing","appears","apple","applicable","application","applications","applied","applies","apply","applying","appointed","appointment","appreciate","appreciated","appreciation","approach","approached","approaches","approaching","appropriate","approval","approve","approved","approximately","apps","apr","april","ar","arab","arabia","arabic","arc","arch","architect","architecture","archives","arctic","are","area","areas","aren't","arena","argentina","argue","argued","argues","arguing","argument","arguments","arizona","arkansas","arm","armed","arms","army","around","arranged","arrangement","arrangements","array","arrest","arrested","arrival","arrive","arrived","arrives","arriving","arrow","arsenal","art","arthur","article","articles","artificial","artist","artistic","artists","arts","artwork","as","ash","ashamed","ashley","asia","asian","aside","ask","asked","asking","asks","asleep","aspect","aspects","assault","assembly","assess","assessment","asset","assets","assigned","assignment","assist","assistance","assistant","assisted","assists","associate","associated","associates","association","associations","assume","assumed","assuming","assumption","assure","assured","at","ate","athlete","athletes","athletic","atlanta","atlantic","atmosphere","attached","attack","attacked","attacking","attacks","attempt","attempted","attempting","attempts","attend","attendance","attended","attending","attention","attitude","attitudes","attorney","attorneys","attract","attracted","attraction","attractive","attributed","au","auction","audience","audiences","audio","audit","aug","august","aunt","austin","australia","australian","austria","authentic","author","authorities","authority","authorized","authors","auto","automatic","automatically","autumn","availability","available","ave","avenue","average","aviation","avoid","avoided","avoiding","aw","awake","award","awarded","awards","aware","awareness","away","awesome","awful","awkward","axis","ba","babe","babies","baby","back","backed","background","backing","backs","backup","backwards","bacon","bacteria","bad","badge","badly","badminton","bag","bags","bail","bailey","baker","balance","balanced","ball","ballot","balls","baltimore","ban","band","bands","bang","bank","banking","bankruptcy","banks","banned","banner","bar","barbara","barcelona","bare","barely","barrel","barrier","barriers","barry","bars","base","baseball","based","basement","bases","basic","basically","basin","basis","basket","basketball","bass","bat","bath","bathroom","batman","batteries","battery","battle","battles","bay","bbc","bc","be","beach","beam","beans","bear","beard","bearing","bears","beast","beat","beaten","beating","beats","beautiful","beauty","became","because","become","becomes","becoming","bed","bedroom","beds","bee","beef","been","beer","before","beg","began","begin","beginning","begins","begun","behalf","behavior","behaviour","behind","beijing","being","beings","belgium","belief","beliefs","believe","believed","believes","believing","bell","belly","belong","belonged","belonging","belongs","beloved","below","belt","ben","bench","bend","beneath","beneficial","benefit","benefits","benjamin","bennett","berlin","bernard","beside","besides","best","bet","beta","better","between","beyond","bi","bias","bible","bid","big","bigger","biggest","bike","bill","billion","bills","billy","bin","binding","bio","biological","biology","bird","birds","birmingham","birth","birthday","bishop","bit","bitcoin","bite","bits","bitter","bizarre","black","blacks","blade","blake","blame","blank","blanket","blast","bleeding","bless","blessed","blessing","blew","blind","block","blocked","blocking","blocks","blog","blonde","blood","bloody","blow","blowing","blown","blows","blue","blues","board","boards","boat","boats","bob","bobby","bodies","body","bold","bolt","bomb","bombing","bombs","bond","bonds","bone","bones","bonus","book","booked","books","boom","boost","boot","booth","boots","border","borders","bored","boring","born","boss","boston","both","bother","bottle","bottles","bottom","bought","bounce","bound","boundaries","boundary","bout","bow","bowl","bowling","box","boxes","boxing","boy","boyfriend","boys","brad","bradley","brain","brains","branch","branches","brand","brandon","brands","brass","brave","brazil","brazilian","breach","bread","break","breakdown","breakfast","breaking","breaks","breast","breath","breathe","breathing","breed","breeding","brian","brick","bride","bridge","bridges","brief","briefly","bright","brilliant","bring","bringing","brings","bristol","britain","british","bro","broad","broadcast","broadcasting","broader","broadway","broke","broken","bronze","brooklyn","brooks","bros","brother","brothers","brought","brown","bruce","brush","brutal","bs","btw","bubble","buck","bucket","bucks","bud","buddy","budget","buffalo","bug","bugs","build","building","buildings","built","bulk","bull","bullet","bullets","bullshit","bunch","burden","bureau","burger","buried","burn","burned","burning","burns","burnt","burst","bus","buses","bush","business","businesses","bust","busy","but","butler","butt","butter","butterflies","butterfly","button","buy","buyer","buyers","buying","buzz","by","bye","ca","cabin","cabinet","cable","cafe","cage","cake","cal","calculated","calendar","california","call","called","calling","calls","calm","calories","cam","cambridge","came","camera","cameras","cameron","camp","campaign","campaigns","campbell","camps","campus","can","can't","canada","canadian","canal","cancel","cancelled","cancer","candidate","candidates","candy","cannabis","cannon","cannot","canon","cant","cap","capabilities","capability","capable","capacity","cape","capital","caps","captain","capture","captured","car","carbon","card","cards","care","cared","career","careers","careful","carefully","cares","cargo","caribbean","caring","carl","carlos","carol","carolina","caroline","carpet","carried","carrier","carriers","carries","carry","carrying","cars","carter","cartoon","case","cases","cash","casino","cast","casting","castle","casual","cat","catch","catching","categories","category","catherine","catholic","cats","cattle","caught","cause","caused","causes","causing","cave","cbs","cc","cd","cease","ceiling","celebrate","celebrated","celebrating","celebration","celebrities","celebrity","cell","cells","cemetery","census","cent","center","centers","central","centre","centres","cents","centuries","century","ceo","ceremony","certain","certainly","certificate","certified","chain","chains","chair","chairman","chairs","challenge","challenged","challenges","challenging","chamber","chambers","champion","champions","championship","championships","chance","chancellor","chances","change","changed","changes","changing","channel","channels","chaos","chapel","chapter","chapters","character","characteristics","characterized","characters","charge","charged","charges","charging","charity","charles","charlie","charlotte","charm","charming","chart","charter","charts","chase","chasing","chat","cheap","cheaper","cheat","cheating","check","checked","checking","checks","cheer","cheers","cheese","chef","chelsea","chemical","chemicals","chemistry","cherry","chest","chicago","chick","chicken","chief","chiefs","child","childhood","children","children's","chile","chill","china","chinese","chip","chips","chocolate","choice","choices","choose","choosing","chose","chosen","chris","christ","christian","christianity","christians","christmas","christopher","chronic","chuck","church","churches","cia","cigarette","cigarettes","cinema","circle","circles","circuit","circumstances","cited","cities","citizen","citizens","citizenship","city","city's","civil","civilian","civilians","civilization","claim","claimed","claiming","claims","clark","clarke","class","classes","classic","classical","classification","classified","classroom","clay","clean","cleaned","cleaning","clear","cleared","clearing","clearly","cleveland","clever","click","client","clients","cliff","climate","climb","climbing","clinic","clinical","clinton","clip","clips","clock","close","closed","closely","closer","closest","closet","closing","closure","cloth","clothes","clothing","cloud","clouds","club","clubs","clue","cm","cnn","co","coach","coaches","coaching","coal","coalition","coast","coastal","coat","code","codes","coffee","cognitive","coin","coins","coke","cold","cole","colin","collaboration","collapse","collar","colleagues","collect","collected","collecting","collection","collections","collective","college","colleges","collins","colonel","colonial","colony","color","colorado","colored","colors","colour","colours","columbia","columbus","column","com","combat","combination","combine","combined","come","comeback","comedy","comes","comfort","comfortable","comic","comics","coming","command","commander","comment","commentary","commented","comments","commerce","commercial","commission","commissioner","commit","commitment","committed","committee","common","commonly","commons","commonwealth","communicate","communication","communications","communist","communities","community","compact","companies","companion","company","company's","comparable","compare","compared","comparing","comparison","compensation","compete","competing","competition","competitive","competitors","complain","complaining","complaint","complaints","complete","completed","completely","completing","completion","complex","complexity","compliance","complicated","comply","component","components","composed","composition","compound","comprehensive","compromise","computer","computers","computing","con","concentrate","concentration","concept","concepts","concern","concerned","concerning","concerns","concert","concluded","conclusion","concrete","condition","conditions","conduct","conducted","conducting","conference","conferences","confidence","confident","confirm","confirmation","confirmed","conflict","conflicts","confused","confusing","confusion","congrats","congratulations","congress","congressional","connect","connected","connecticut","connecting","connection","connections","conscious","consciousness","consecutive","consensus","consent","consequence","consequences","conservation","conservative","conservatives","consider","considerable","consideration","considered","considering","considers","consistent","consistently","consisting","consists","console","conspiracy","constant","constantly","constitution","constitutional","constructed","construction","consultant","consultation","consulting","consumer","consumers","consumption","contact","contacts","contain","contained","container","containing","contains","contemporary","content","contents","contest","context","continent","continental","continue","continued","continues","continuing","continuous","contract","contractor","contractors","contracts","contrary","contrast","contribute","contributed","contributing","contribution","contributions","control","controlled","controller","controlling","controls","controversial","controversy","convenience","convenient","convention","conventional","conversation","conversations","conversion","convert","converted","convicted","conviction","convince","convinced","cook","cooked","cookie","cookies","cooking","cool","cooling","cooper","cooperation","cop","cope","copies","copper","cops","copy","copyright","core","corn","corner","corners","corp","corporate","corporation","corporations","corps","correct","correctly","corresponding","corrupt","corruption","cos","cost","costa","costs","costume","cotton","couch","could","could've","couldn't","council","counsel","count","counted","counter","counties","counting","countries","country","country's","counts","county","couple","couples","courage","course","courses","court","courtesy","courts","cousin","cover","coverage","covered","covering","covers","cow","cowboys","crack","craft","craig","crash","crashed","crazy","cream","create","created","creates","creating","creation","creative","creativity","creator","creature","creatures","credit","credits","creek","creepy","crew","cricket","cried","crime","crimes","criminal","criminals","crisis","criteria","critical","criticism","critics","crop","crops","cross","crossed","crossing","crowd","crown","crucial","cruel","cruise","crush","crushed","cruz","cry","crying","crystal","ct","cuba","cult","cultural","culture","cultures","cup","cups","cure","curious","currency","current","currently","curriculum","curse","curve","custody","custom","customer","customers","customs","cut","cute","cuts","cutting","cycle","cycling","da","dad","daddy","daily","dairy","dakota","dallas","dam","damage","damaged","damages","dan","dance","dancing","danger","dangerous","daniel","danny","dare","dares","dark","darkness","darling","data","database","date","dated","dates","dating","daughter","daughters","dave","david","davis","dawn","day","days","dc","de","dead","deadline","deadly","deal","dealer","dealers","dealing","deals","dealt","dean","dear","death","deaths","debate","debt","debut","dec","decade","decades","december","decent","decide","decided","decides","deciding","decision","decisions","deck","declaration","declare","declared","decline","declined","decrease","dedicated","deemed","deep","deeper","deeply","deer","default","defeat","defeated","defence","defend","defender","defending","defense","defensive","deficit","define","defined","definitely","definition","degree","degrees","del","delay","delayed","delete","deleted","delhi","deliberately","delicate","delicious","delighted","deliver","delivered","delivering","delivery","delta","demand","demanded","demanding","demands","demo","democracy","democrat","democratic","democrats","demon","demonstrate","demonstrated","demonstration","den","denied","denmark","dennis","density","dental","denver","deny","department","departments","departure","depend","dependent","depending","depends","deployed","deposit","depressed","depression","depth","deputy","der","derby","derek","derived","des","describe","described","describes","describing","description","desert","deserve","deserved","deserves","design","designated","designed","designer","designers","designs","desire","desired","desires","desk","desperate","despite","destination","destiny","destroy","destroyed","destroying","destruction","detail","detailed","details","detect","detected","detection","detective","determination","determine","determined","detroit","develop","developed","developer","developers","developing","development","developments","device","devices","devil","devoted","di","diabetes","diagnosed","diagnosis","dialogue","diameter","diamond","diamonds","diana","diary","dictionary","did","didn't","didnt","die","died","diego","dies","diesel","diet","differ","difference","differences","different","differently","difficult","difficulties","difficulty","dig","digital","dignity","dimension","dimensional","dimensions","dining","dinner","dip","diplomatic","direct","directed","direction","directions","directly","director","directors","dirt","dirty","disability","disabled","disagree","disappear","disappeared","disappointed","disappointing","disappointment","disaster","disc","discipline","discount","discover","discovered","discovery","discrimination","discuss","discussed","discussing","discussion","discussions","disease","diseases","disgusting","dish","dishes","disk","dismissed","disney","disorder","disorders","display","displayed","displays","dispute","distance","distant","distinct","distinction","distinguished","distributed","distribution","district","districts","disturbing","dive","diverse","diversity","divide","divided","divine","diving","division","divisions","divorce","divorced","dj","dna","do","doc","doctor","doctors","document","documentary","documents","does","doesn't","doesnt","dog","dogs","doing","doll","dollar","dollars","domain","domestic","dominant","dominated","don","don't","donald","donate","donated","donations","done","dont","door","doors","dose","dot","double","doubt","doug","douglas","down","download","downtown","dozen","dozens","dr","draft","drag","dragon","dragons","drain","drama","dramatic","draw","drawing","drawings","drawn","draws","dream","dreams","dress","dressed","dresses","dressing","drew","dried","drill","drink","drinking","drinks","drive","driven","driver","drivers","drives","driving","drop","dropped","dropping","drops","drove","drug","drugs","drum","drunk","dry","du","dual","dubai","dublin","duck","dude","due","duke","dumb","dump","duncan","duo","duration","during","dust","dutch","duties","duty","dvd","dying","dylan","dynamic","dynamics","dyslexia","dyslexic","each","eager","eagle","eagles","ear","earl","earlier","earliest","early","earn","earned","earning","earnings","ears","earth","earthquake","ease","easier","easily","east","easter","eastern","easy","eat","eaten","eating","ebay","echo","economic","economics","economy","ed","eddie","edge","edges","edinburgh","edit","edited","editing","edition","editor","editorial","editors","educated","education","educational","edward","edwards","effect","effective","effectively","effectiveness","effects","efficiency","efficient","effort","efforts","egg","eggs","ego","egypt","egyptian","eh","eight","eighth","either","el","elaborate","elder","elderly","elect","elected","election","elections","electoral","electric","electrical","electricity","electronic","electronics","element","elementary","elements","elephant","elevated","eleven","eligible","eliminate","eliminated","elite","elizabeth","ellen","else","elsewhere","em","email","emails","embarrassed","embarrassing","embassy","embrace","emerged","emergency","emerging","emily","emissions","emma","emotion","emotional","emotionally","emotions","emperor","emphasis","empire","employed","employee","employees","employer","employers","employment","empty","en","enable","enabled","encounter","encountered","encourage","encouraged","encouraging","end","ended","ending","endless","ends","enemies","enemy","energy","enforcement","engage","engaged","engagement","engaging","engine","engineer","engineering","engineers","engines","england","english","enhance","enhanced","enjoy","enjoyed","enjoying","enormous","enough","ensure","enter","entered","entering","enterprise","enters","entertaining","entertainment","enthusiasm","entire","entirely","entitled","entity","entrance","entries","entry","environment","environmental","environments","ep","epic","episode","episodes","equal","equality","equally","equation","equipment","equipped","equity","equivalent","er","era","eric","error","errors","escape","escaped","especially","essay","essays","essence","essential","essentially","est","establish","established","establishing","establishment","estate","estimate","estimated","estimates","et","etc","eternal","ethical","ethics","ethnic","eu","euro","europe","european","evaluate","evaluation","evans","eve","even","evening","event","events","eventually","ever","every","everybody","everyday","everyone","everyone's","everything","everywhere","evidence","evil","evolution","evolved","ex","exact","exactly","exam","examination","examine","examined","example","examples","excellence","excellent","except","exception","exceptional","excess","excessive","exchange","excited","excitement","exciting","exclusive","exclusively","excuse","executed","execution","executive","executives","exercise","exercises","exhausted","exhibit","exhibition","exist","existed","existence","existing","exists","exit","expand","expanded","expanding","expansion","expect","expectations","expected","expecting","expense","expenses","expensive","experience","experienced","experiences","experiencing","experiment","experimental","experiments","expert","expertise","experts","explain","explained","explaining","explains","explanation","exploration","explore","exploring","explosion","export","exports","exposed","exposure","express","expressed","expression","extend","extended","extending","extension","extensive","extent","external","extra","extract","extraordinary","extreme","extremely","eye","eyes","fa","fabric","fabulous","face","facebook","faced","faces","facial","facilities","facility","facing","fact","factor","factors","factory","facts","faculty","fail","failed","failing","fails","failure","fair","fairly","fairy","faith","faithful","fake","fall","fallen","falling","falls","false","fame","familiar","families","family","family's","famous","fan","fancy","fans","fantastic","fantasy","far","farm","farmer","farmers","farming","farms","fascinating","fashion","fast","faster","fastest","fat","fatal","fate","father","father's","fathers","fault","favor","favorite","favorites","favour","favourite","fbi","fc","fear","fears","feature","featured","features","featuring","feb","february","fed","federal","federation","fee","feed","feedback","feeding","feel","feeling","feelings","feels","fees","feet","fell","fellow","felt","female","females","feminist","fence","ferry","festival","fever","few","fewer","fi","fiber","fiction","field","fields","fifa","fifteen","fifth","fifty","fig","fight","fighter","fighters","fighting","fights","figure","figured","figures","file","filed","files","filing","fill","filled","filling","film","filmed","filming","films","filter","final","finale","finally","finals","finance","financial","financing","find","finding","findings","finds","fine","finest","finger","fingers","finish","finished","finishing","fire","fired","fires","firing","firm","firms","first","fiscal","fish","fisher","fishing","fit","fitness","fits","fitted","fitting","five","fix","fixed","fixing","fl","flag","flags","flame","flames","flash","flat","flavor","fled","fleet","flesh","flew","flexibility","flexible","flies","flight","flights","flip","floating","flood","floor","floors","florida","flow","flower","flowers","flowing","flows","fluid","fly","flying","fm","focus","focused","focuses","focusing","fold","folk","folks","follow","followed","followers","following","follows","food","foods","fool","foot","footage","football","for","force","forced","forces","forcing","ford","forecast","foreign","forest","forests","forever","forget","forgive","forgot","forgotten","fork","form","formal","formally","format","formation","formed","former","formerly","forming","forms","formula","fort","forth","fortune","forty","forum","forward","foster","fought","foul","found","foundation","founded","founder","four","fourth","fox","fr","frame","frames","framework","france","franchise","francis","francisco","frank","franklin","frankly","fraud","freak","freaking","fred","free","freedom","freely","freeze","freezing","french","frequency","frequent","frequently","fresh","friday","fridge","fried","friend","friendly","friends","friendship","from","front","frozen","fruit","fruits","frustrated","ft","fuckin","fuel","full","fully","fun","function","functional","functioning","functions","fund","fundamental","funded","funding","funds","funeral","funny","fur","furniture","further","furthermore","fusion","future","ga","gain","gained","gaining","gains","galaxy","gallery","gambling","game","games","gaming","gang","gap","garage","garbage","garden","gardens","gary","gas","gate","gates","gather","gathered","gathering","gauge","gave","gear","gen","gender","gene","general","generally","generate","generated","generation","generations","generic","generous","genes","genetic","genius","genre","gentle","gentleman","gentlemen","gently","genuine","genuinely","george","georgia","german","germans","germany","get","gets","getting","ghost","giant","giants","gift","gifts","girl","girlfriend","girls","give","given","gives","giving","glad","glasgow","glass","glasses","global","globe","glorious","glory","gloves","gm","go","goal","goals","goat","god","god's","goddess","gods","goes","going","gold","golden","golf","gone","gonna","good","goodbye","goodness","goods","google","gop","gordon","gorgeous","gospel","got","gotta","gotten","gov","governance","governing","government","governments","governor","gps","grab","grabbed","grace","grade","grades","gradually","graduate","graduated","graduates","graduation","graham","grain","grammar","grand","grandfather","grandma","grandmother","grant","granted","grants","graph","graphic","graphics","grass","grateful","grave","gravity","gray","great","greater","greatest","greatly","greece","greek","green","greg","grew","grey","grid","grief","grip","grocery","gross","ground","grounds","group","groups","grow","growing","grown","grows","growth","guarantee","guaranteed","guard","guardian","guards","guess","guest","guests","guidance","guide","guided","guidelines","guilt","guilty","guinea","guitar","gulf","gun","guns","gut","guy","guys","gym","ha","habit","habits","hack","had","hadn't","haha","hair","half","halfway","hall","halloween","ham","hamilton","hammer","hampshire","hand","handed","handful","handle","handled","handling","hands","handsome","hang","hanging","hannah","happen","happened","happening","happens","happier","happily","happiness","happy","harassment","harbor","hard","harder","hardest","hardly","hardware","harm","harmony","harold","harper","harris","harrison","harry","harsh","hart","harvard","harvest","harvey","has","hasn't","hat","hate","hated","hates","hatred","hats","have","haven","haven't","having","hawaii","hd","he","he'd","he'll","he's","head","headed","heading","headline","headquarters","heads","heal","healing","health","healthcare","healthy","hear","heard","hearing","heart","hearts","heat","heated","heating","heaven","heavily","heavy","heck","heels","height","heights","held","helen","helicopter","hello","helmet","help","helped","helpful","helping","helps","hence","henry","her","here","here's","heritage","hero","heroes","herself","hey","hi","hidden","hide","hiding","high","higher","highest","highlight","highlights","highly","highway","hilarious","hill","hillary","hills","him","himself","hint","hip","hire","hired","hiring","his","historic","historical","historically","history","hit","hitler","hits","hitting","hiv","hmm","ho","hockey","hold","holder","holders","holding","holds","hole","holes","holiday","holidays","holland","hollywood","holmes","holy","home","homeless","homes","homework","honest","honestly","honey","hong","honor","honored","honour","hood","hook","hop","hope","hoped","hopefully","hopes","hoping","horizon","horn","horrible","horror","horse","horses","hospital","hospitals","host","hosted","hostile","hosting","hosts","hot","hotel","hotels","hour","hours","house","household","households","houses","housing","houston","how","howard","however","hp","hr","http","https","hub","hudson","hug","huge","hugh","hughes","huh","hull","human","humanity","humans","humble","humor","hundred","hundreds","hung","hunger","hungry","hunt","hunter","hunting","hurricane","hurry","hurt","hurting","hurts","husband","hybrid","hype","i","i'd","i'll","i'm","i've","ian","ice","icon","iconic","id","idea","ideal","ideas","identical","identification","identified","identify","identifying","identity","ideology","idiot","idiots","idk","if","ignorance","ignorant","ignore","ignored","ignoring","ii","iii","il","ill","illegal","illinois","illness","illustrated","im","image","images","imagination","imagine","imagined","immediate","immediately","immigrant","immigrants","immigration","immune","impact","impacts","imperial","implement","implementation","implemented","implications","import","importance","important","importantly","imposed","impossible","impressed","impression","impressive","improve","improved","improvement","improvements","improving","in","inc","inch","inches","incident","incidents","include","included","includes","including","inclusion","income","incorporated","increase","increased","increases","increasing","increasingly","incredible","incredibly","indeed","independence","independent","independently","index","india","indian","indiana","indians","indicate","indicated","indicates","indicating","indication","indigenous","individual","individuals","indonesia","indoor","induced","industrial","industries","industry","inevitable","infected","infection","infinite","inflation","influence","influenced","influences","influential","info","inform","information","informed","infrastructure","ingredients","inhabitants","initial","initially","initiative","initiatives","injured","injuries","injury","ink","inn","inner","innings","innocent","innovation","innovative","input","inquiry","insane","insects","insert","inside","insight","insist","insisted","inspection","inspector","inspiration","inspired","inspiring","instagram","install","installation","installed","instance","instances","instant","instantly","instead","institute","institution","institutions","instruction","instructions","instructor","instrument","instruments","insurance","integrated","integration","integrity","intel","intellectual","intelligence","intelligent","intend","intended","intense","intensity","intensive","intent","intention","intentions","inter","interact","interaction","interactions","interactive","interest","interested","interesting","interests","interface","interior","intermediate","internal","international","internet","interpretation","intervention","interview","interviews","intimate","into","introduce","introduced","introducing","introduction","invasion","invented","invention","inventory","invest","invested","investigate","investigated","investigating","investigation","investigations","investing","investment","investments","investors","invisible","invitation","invite","invited","involve","involved","involvement","involves","involving","ion","ios","iowa","ip","ipad","iphone","iran","iranian","iraq","ireland","irish","iron","is","isis","islam","islamic","island","islands","isn't","isolated","isolation","israel","israeli","issue","issued","issues","it","it'd","it'll","it's","italian","italy","item","items","its","itself","iv","ive","jack","jacket","jackson","jacob","jail","jake","jam","james","jamie","jan","jane","january","japan","japanese","jason","jay","jazz","jealous","jean","jeans","jeff","jennifer","jeremy","jerry","jersey","jerusalem","jesse","jessica","jesus","jet","jets","jewelry","jewish","jews","jim","jimmy","jo","joan","job","jobs","joe","john","johnny","johnson","join","joined","joining","joins","joint","joke","jokes","joking","jon","jonathan","jones","jordan","jose","joseph","josh","journal","journalism","journalist","journalists","journey","joy","jr","juan","judge","judges","judging","judgment","judicial","juice","julia","julie","july","jump","jumped","jumping","june","jungle","junior","junk","jurisdiction","jury","just","justice","justified","justify","justin","kansas","karen","kate","keen","keep","keeper","keeping","keeps","keith","kelly","ken","kennedy","kenny","kent","kentucky","kenya","kept","kevin","key","keyboard","keys","kg","khan","kick","kicked","kicking","kicks","kid","kidding","kidney","kids","kill","killed","killer","killing","kills","kim","kind","kinda","kinds","king","king's","kingdom","kings","kiss","kit","kitchen","km","knee","knees","knew","knife","knight","knights","knock","knocked","know","knowing","knowledge","known","knows","kong","korea","korean","kyle","la","lab","label","labels","labor","laboratory","labour","lack","lacking","ladder","ladies","lady","laid","lake","lakes","lamb","lamp","land","landed","landing","lands","landscape","lane","language","languages","lap","laptop","large","largely","larger","largest","larry","las","laser","last","lasted","lasting","late","lately","later","latest","latin","latter","laugh","laughed","laughing","laughs","laughter","launch","launched","laundry","laura","law","lawrence","laws","lawsuit","lawyer","lawyers","lay","layer","layers","laying","layout","lazy","lbs","le","lead","leader","leaders","leadership","leading","leads","leaf","league","leak","lean","learn","learned","learning","lease","least","leather","leave","leaves","leaving","lebanon","lecture","led","lee","leeds","left","leg","legacy","legal","legally","legend","legendary","legends","legislation","legislative","legislature","legit","legitimate","legs","lemon","length","lens","leo","leonard","les","less","lesser","lesson","lessons","let","let's","lets","letter","letters","letting","level","levels","lewis","lgbt","li","liability","liar","liberal","liberals","liberty","libraries","library","license","licensed","lie","lied","lies","lieutenant","life","lifestyle","lifetime","lift","lifted","lifting","light","lighter","lighting","lightning","lights","like","liked","likely","likes","likewise","limit","limitations","limited","limits","lincoln","linda","line","linear","lined","lines","lineup","link","linked","links","lion","lions","lip","lips","liquid","liquor","lisa","list","listed","listen","listened","listening","listing","lists","lit","literally","literary","literature","little","live","lived","liver","liverpool","lives","living","ll","lloyd","lmao","lo","load","loaded","loading","loads","loan","loans","lobby","local","locally","located","location","locations","lock","locked","lodge","log","logan","logic","logical","logo","lol","london","lonely","long","longer","longest","look","looked","looking","looks","loop","loose","lord","lords","los","lose","loser","loses","losing","loss","losses","lost","lot","lots","loud","louis","louisiana","love","loved","lovely","lover","lovers","loves","loving","low","lower","lowest","loyal","loyalty","lt","ltd","lucas","luck","lucky","lucy","luke","lunch","lung","luxury","lying","lyrics","ma","mac","machine","machinery","machines","mad","made","madison","madrid","magazine","magazines","magic","magical","magnetic","magnificent","mail","main","maine","mainly","mainstream","maintain","maintained","maintaining","maintenance","majesty","major","majority","make","maker","makers","makes","makeup","making","malaysia","malcolm","male","males","mall","mama","man","man's","manage","managed","management","manager","managers","managing","manchester","mandatory","manhattan","manner","mansion","manual","manufactured","manufacturer","manufacturers","manufacturing","many","map","maps","mar","marathon","marc","march","marcus","margaret","margin","maria","marie","marijuana","marine","mario","mark","marked","market","marketing","markets","marks","marriage","married","marry","mars","marshall","martial","martin","marvel","mary","maryland","mask","mason","mass","massachusetts","massage","massive","master","masters","match","matched","matches","matching","mate","material","materials","math","mathematical","mathematics","matrix","matt","matter","matters","matthew","mature","max","maximum","may","maybe","mayor","md","me","meal","meals","mean","meaning","meaningful","means","meant","meantime","meanwhile","measure","measured","measurement","measurements","measures","measuring","meat","mechanical","mechanics","mechanism","mechanisms","medal","media","median","medical","medication","medicine","medieval","medium","meet","meeting","meetings","meets","mega","melbourne","member","members","membership","memorial","memories","memory","men","men's","mental","mentally","mention","mentioned","mentions","menu","merchant","mercury","mercy","mere","merely","merit","mess","message","messages","messed","met","metal","meter","meters","method","methods","metres","metro","metropolitan","mexican","mexico","mg","mi","miami","mice","michael","michelle","michigan","micro","microsoft","mid","middle","midnight","might","mighty","migration","mike","milan","mild","mile","miles","military","milk","mill","miller","million","millions","mills","milwaukee","min","mind","minded","minds","mine","mineral","mines","mini","minimal","minimum","mining","minister","ministers","ministry","minnesota","minor","minority","minute","minutes","miracle","mirror","miserable","miss","missed","missile","missing","mission","missions","mississippi","missouri","mistake","mistakes","mitchell","mix","mixed","mixing","mixture","mm","mo","mob","mobile","mobility","mode","model","models","moderate","modern","modest","modified","molecular","mom","moment","moments","momentum","monday","monetary","money","monitor","monitoring","monkey","monster","monsters","montana","month","monthly","months","montreal","mood","moon","moore","moral","more","moreover","morgan","morning","morris","mortgage","moscow","most","mostly","mother","mother's","mothers","motion","motivated","motivation","motor","motorcycle","motors","mount","mountain","mountains","mounted","mouse","mouth","move","moved","movement","movements","moves","movie","movies","moving","mp","mph","mps","mr","mrs","ms","mt","much","mud","multi","multiple","mum","municipal","murder","murdered","murders","murphy","murray","muscle","muscles","museum","music","musical","musician","musicians","muslim","muslims","must","mutual","my","myself","mysterious","mystery","myth","na","nah","nail","nails","naked","name","named","namely","names","nancy","narrative","narrow","nasa","nasty","nathan","nation","national","nations","nationwide","native","nato","natural","naturally","nature","naval","navigation","navy","nazi","nba","nbc","nc","ne","near","nearby","nearest","nearly","necessarily","necessary","neck","need","needed","needing","needs","negative","negotiations","neighbor","neighborhood","neighbors","neil","neither","nelson","nephew","nerve","nerves","nervous","nest","net","netflix","netherlands","network","networks","neutral","nevada","never","nevertheless","new","newcastle","newest","newly","news","newspaper","newspapers","next","nfl","nhl","nice","nicely","nicholas","nick","nigeria","nigerian","night","nightmare","nightmares","nights","nine","nintendo","ninth","no","noble","nobody","noise","nominated","nomination","non","none","nonetheless","nonsense","noon","nope","nor","normal","normally","norman","north","northeast","northern","northwest","norway","nose","not","notable","notably","note","noted","notes","nothing","notice","noticed","notion","nov","novel","novels","november","now","nowadays","nowhere","nuclear","number","numbers","numerous","nurse","nurses","nursing","nut","nutrition","nuts","ny","nyc","o'clock","oak","obama","obama's","object","objective","objectives","objects","obligation","observation","observations","observe","observed","obsessed","obtain","obtained","obvious","obviously","occasion","occasional","occasionally","occasions","occupation","occupied","occur","occurred","occurs","ocean","oct","october","odd","odds","of","off","offense","offensive","offer","offered","offering","offers","office","officer","officers","offices","official","officially","officials","often","oh","ohio","oil","ok","okay","oklahoma","old","older","oldest","olive","oliver","olympic","olympics","omg","on","once","one","one's","ones","ongoing","online","only","ontario","onto","op","open","opened","opening","openly","opens","opera","operate","operated","operates","operating","operation","operational","operations","operator","operators","opinion","opinions","opponent","opponents","opportunities","opportunity","opposed","opposing","opposite","opposition","optical","option","options","or","oral","orange","orbit","orchestra","order","ordered","ordering","orders","ordinary","ore","oregon","organ","organic","organisation","organisations","organised","organization","organizations","organized","orientation","oriented","origin","original","originally","origins","orlando","orleans","os","oscar","other","others","otherwise","ought","our","ours","ourselves","out","outcome","outcomes","outdoor","outer","outfit","outlook","output","outside","outstanding","outta","oven","over","overall","overcome","overnight","overseas","overview","overwhelming","owe","owen","own","owned","owner","owners","ownership","owns","oxford","oxygen","oz","pa","pace","pacific","pack","package","packages","packed","packing","pad","page","pages","paid","pain","painful","paint","painted","painting","paintings","pair","pairs","pakistan","pakistani","palace","pale","palestinian","palm","palmer","pan","panel","panels","panic","pants","paper","papers","par","parade","paradise","paragraph","parallel","parent","parents","paris","parish","park","parker","parking","parks","parliament","parliamentary","part","partial","partially","participants","participate","participated","participating","participation","particles","particular","particularly","parties","partly","partner","partners","partnership","parts","party","pass","passage","passed","passenger","passengers","passes","passing","passion","passionate","passive","passport","password","past","pastor","pat","patch","patent","path","pathetic","paths","patience","patient","patients","patrick","patrol","pattern","patterns","paul","pay","paying","payment","payments","pays","pc","peace","peaceful","peak","pearl","peer","peers","pen","penalties","penalty","pending","peninsula","pennsylvania","penny","pension","people","people's","peoples","pepper","per","perceived","percent","percentage","perception","perfect","perfectly","perform","performance","performances","performed","performing","perhaps","period","periods","permanent","permanently","permission","permit","permitted","perry","person","person's","personal","personality","personally","personnel","persons","perspective","pet","pete","peter","petition","pets","petty","phase","phd","phenomenon","phil","philadelphia","philip","philippines","phillips","philosophy","phoenix","phone","phones","photo","photograph","photographer","photographs","photography","photos","phrase","physical","physically","physician","physicians","physics","piano","pic","pick","picked","picking","picks","pics","picture","pictures","pie","piece","pieces","pig","pile","pill","pills","pilot","pilots","pin","pine","pink","pipe","pipeline","pit","pitch","pittsburgh","pizza","place","placed","placement","places","placing","plain","plan","plane","planes","planet","planets","planned","planning","plans","plant","planted","plants","plastic","plate","plates","platform","platforms","platinum","play","played","player","players","playing","playoff","playoffs","plays","pleasant","please","pleased","pleasure","plenty","plot","plug","plus","pm","pocket","pockets","podcast","poem","poems","poet","poetry","point","pointed","pointing","points","poison","pokemon","poland","pole","police","policies","policy","polish","political","politically","politician","politicians","politics","poll","polls","pollution","pool","poor","poorly","pop","pope","popular","popularity","population","populations","pork","port","portfolio","portion","portland","portrait","ports","portugal","portuguese","pose","position","positions","positive","possess","possession","possibilities","possibility","possible","possibly","post","posted","poster","posting","posts","pot","potato","potatoes","potential","potentially","potter","pound","pounds","pour","poverty","powder","power","powered","powerful","powers","pp","pr","practical","practically","practice","practices","praise","praised","pray","prayer","prayers","pre","precious","precise","precisely","precision","predict","predicted","prefer","preference","preferred","pregnancy","pregnant","preliminary","premier","premiere","premises","premium","preparation","prepare","prepared","preparing","presence","present","presentation","presented","presenting","presents","preservation","preserve","preserved","presidency","president","presidential","presidents","press","pressed","pressing","pressure","presumably","pretend","pretending","pretty","prevent","prevented","preventing","prevention","previous","previously","price","prices","pricing","pride","priest","priests","primarily","primary","prime","prince","princess","principal","principle","principles","print","printed","printing","prints","prior","priorities","priority","prison","prisoner","prisoners","privacy","private","privately","privilege","prize","prizes","pro","probability","probably","problem","problems","procedure","procedures","proceed","proceedings","proceeds","process","processes","processing","produce","produced","producer","producers","produces","producing","product","production","productive","productivity","products","prof","profession","professional","professionals","professor","profile","profit","profitable","profits","program","programme","programmes","programming","programs","progress","progressive","project","projects","prominent","promise","promised","promises","promising","promote","promoted","promoting","promotion","pronounced","proof","propaganda","proper","properly","properties","property","proportion","proposal","proposals","proposed","prosecution","prospect","prospects","protect","protected","protecting","protection","protective","protein","proteins","protest","protests","protocol","proud","prove","proved","proven","proves","provide","provided","provider","providers","provides","providing","province","provinces","provincial","provision","provisions","ps","psychological","psychology","pt","pub","public","publication","publications","publicly","publish","published","publisher","publishers","publishing","puerto","pull","pulled","pulling","pulls","pulse","pump","punch","punishment","punk","pupils","purchase","purchased","purchases","purchasing","pure","purely","purple","purpose","purposes","pursue","pursuit","push","pushed","pushing","pussy","put","putin","puts","putting","qualified","qualify","qualifying","qualities","quality","quantity","quantum","quarter","quarters","queen","queens","queensland","quest","question","questioned","questioning","questions","quick","quickly","quiet","quietly","quit","quite","quote","quoted","quotes","rabbit","race","races","rachel","racial","racing","racism","racist","radar","radiation","radical","radio","rage","raid","rail","railroad","railway","rain","rainbow","raise","raised","raises","raising","rally","ralph","ram","ran","ranch","random","range","rangers","ranges","ranging","rank","ranked","ranking","ranks","rap","raped","rapid","rapidly","rare","rarely","rat","rate","rated","rates","rather","rating","ratings","ratio","rational","rats","raw","ray","rays","rd","re","reach","reached","reaches","reaching","react","reaction","reactions","read","reader","readers","reading","reads","ready","real","realise","realised","realistic","reality","realize","realized","really","realm","rear","reason","reasonable","reasonably","reasoning","reasons","rebel","rebels","recall","receive","received","receiver","receives","receiving","recent","recently","reception","recipe","recognised","recognition","recognize","recognized","recommend","recommendation","recommendations","recommended","record","recorded","recording","records","recover","recovered","recovery","recreation","red","reduce","reduced","reducing","reduction","reed","refer","reference","references","referred","referring","refers","reflect","reflected","reflection","reflects","reform","reforms","refugees","refuse","refused","refuses","regard","regarded","regarding","regardless","regards","regime","region","regional","regions","register","registered","registration","regret","regular","regularly","regulation","regulations","regulatory","reign","reject","rejected","relate","related","relating","relation","relations","relationship","relationships","relative","relatively","relatives","relax","relaxed","release","released","releases","releasing","relevant","reliable","relief","religion","religious","rely","remain","remainder","remained","remaining","remains","remarkable","remarks","remember","remembered","remind","reminded","reminder","reminds","remote","removal","remove","removed","removing","renewed","rent","rental","rep","repair","repairs","repeat","repeated","repeatedly","replace","replaced","replacement","replacing","replied","reply","report","reported","reportedly","reporter","reporters","reporting","reports","represent","representation","representative","representatives","represented","representing","represents","republic","republican","republicans","reputation","request","requested","requests","require","required","requirement","requirements","requires","requiring","rescue","research","researchers","reserve","reserved","reserves","residence","resident","residential","residents","resignation","resigned","resist","resistance","resolution","resolve","resolved","resort","resource","resources","respect","respected","respective","respectively","respond","responded","responding","response","responses","responsibilities","responsibility","responsible","rest","restaurant","restaurants","restoration","restore","restored","restricted","restrictions","result","resulted","resulting","results","resume","retail","retain","retained","retire","retired","retirement","retreat","return","returned","returning","returns","rev","reveal","revealed","reveals","revenge","revenue","revenues","reverse","review","reviewed","reviews","revised","revolution","revolutionary","reward","rewards","rhythm","rice","rich","richard","richmond","rick","rid","ride","rider","rides","ridge","ridiculous","riding","rifle","right","rights","ring","rings","rio","riot","rip","ripped","rise","rises","rising","risk","risks","ritual","rival","river","rivers","road","roads","rob","robert","roberts","robin","robinson","robot","rock","rocket","rocks","rocky","rod","roger","rogers","role","roles","roll","rolled","rolling","rolls","roman","romance","romantic","rome","ron","roof","rookie","room","rooms","root","roots","rope","rose","roses","ross","roster","rotation","rough","roughly","round","rounds","route","routes","routine","row","roy","royal","rs","rt","rubber","rude","rugby","ruin","ruined","ruins","rule","ruled","rules","ruling","rumors","run","runner","running","runs","rural","rush","russell","russia","russian","russians","ruth","ryan","sa","sacred","sacrifice","sad","sadly","safe","safely","safer","safety","said","sail","saint","saints","sake","salad","salary","sale","sales","salmon","salt","sam","same","sample","samples","samsung","samuel","san","sand","sandwich","sandy","sang","santa","sarah","sat","satellite","satisfaction","satisfied","saturday","sauce","saudi","savage","save","saved","saves","saving","savings","saw","say","saying","says","sc","scale","scan","scandal","scare","scared","scary","scenario","scene","scenes","schedule","scheduled","scheme","schemes","scholars","scholarship","school","schools","science","sciences","scientific","scientist","scientists","scope","score","scored","scores","scoring","scotland","scott","scottish","scratch","scream","screaming","screen","screening","screens","screw","script","se","sea","seal","sealed","sean","search","searching","season","seasons","seat","seats","seattle","sec","second","secondary","seconds","secret","secretary","secretly","secrets","section","sections","sector","sectors","secure","secured","securities","security","see","seed","seeds","seeing","seek","seeking","seeks","seem","seemed","seemingly","seems","seen","sees","segment","seized","select","selected","selection","self","selfish","sell","seller","selling","sells","semester","semi","sen","senate","senator","senators","send","sending","sends","senior","sense","sensitive","sent","sentence","sentenced","sentences","sentiment","seo","separate","separated","separately","separation","sept","september","sequel","sequels","sequence","sergeant","serial","series","serious","seriously","servant","servants","serve","served","server","servers","serves","service","services","serving","session","sessions","set","sets","setting","settings","settle","settled","settlement","setup","seven","seventh","several","severe","severely","sexual","sexually","shade","shadow","shadows","shake","shaking","shall","shallow","shame","shanghai","shape","shaped","share","shared","shares","sharing","shark","sharp","shaw","she","she'd","she'll","she's","shed","sheep","sheer","sheet","sheets","shelf","shell","shelter","sheriff","shield","shift","shifts","shine","ship","shipped","shipping","ships","shirt","shirts","shiver","shock","shocked","shocking","shoe","shoes","shook","shoot","shooter","shooting","shop","shopping","shops","shore","short","shorter","shortly","shorts","shot","shots","should","should've","shoulder","shoulders","shouldn't","shout","show","showed","shower","showing","shown","shows","shut","shy","si","siblings","sick","side","sides","sierra","sight","sign","signal","signals","signature","signed","significance","significant","significantly","signing","signs","silence","silent","silk","silly","silver","similar","similarly","simon","simple","simply","simpson","simultaneously","sin","since","sing","singapore","singer","singh","singing","single","singles","sink","sins","sir","sister","sisters","sit","site","sites","sits","sitting","situated","situation","situations","six","sixth","size","sized","sizes","sketch","ski","skill","skilled","skills","skin","skip","skull","sky","slam","slave","slavery","slaves","sleep","sleeping","slept","slide","slight","slightly","slim","slip","slot","slow","slowly","small","smaller","smallest","smart","smartphone","smash","smell","smells","smile","smiling","smith","smoke","smoking","smooth","snake","snap","snow","so","soap","soccer","social","socialist","societies","society","socks","soda","soft","software","soil","solar","sold","soldier","soldiers","sole","solely","solid","solo","solution","solutions","solve","solved","some","somebody","someday","somehow","someone","someone's","something","sometime","sometimes","somewhat","somewhere","son","song","songs","sons","sony","soon","sooner","sophisticated","sorry","sort","sorts","sought","soul","souls","sound","sounded","sounds","soup","source","sources","south","southeast","southern","southwest","soviet","sp","space","spaces","spain","spam","span","spanish","spare","speak","speaker","speakers","speaking","speaks","special","specialist","specialized","specially","species","specific","specifically","specified","spectacular","spectrum","speech","speed","speeds","spell","spencer","spend","spending","spent","spider","spin","spine","spirit","spirits","spiritual","spite","split","spoke","spoken","sponsor","sponsored","sport","sporting","sports","spot","spots","spotted","spray","spread","spreading","spring","springs","spy","squad","square","sr","sri","ss","st","stability","stable","stack","stadium","staff","stage","stages","stairs","stake","stakes","stamp","stan","stance","stand","standard","standards","standing","stands","stanley","star","staring","stark","starring","stars","start","started","starter","starting","starts","state","state's","stated","statement","statements","states","static","stating","station","stations","statistical","statistics","stats","statue","status","stay","stayed","staying","stays","steady","steal","stealing","steam","steel","stem","step","stephen","stepped","steps","sterling","steve","steven","stewart","stick","sticking","sticks","still","stock","stocks","stole","stolen","stomach","stone","stones","stood","stop","stopped","stopping","stops","storage","store","stored","stores","stories","storm","story","straight","strain","strange","stranger","strangers","strategic","strategies","strategy","streak","stream","streaming","streams","street","streets","strength","strengthen","stress","stressed","stretch","strict","strictly","strike","strikes","striking","string","strings","strip","stroke","strong","stronger","strongest","strongly","struck","structural","structure","structures","struggle","struggled","struggles","struggling","stuart","stuck","student","students","studied","studies","studio","studios","study","studying","stuff","stunning","stupid","style","styles","sub","subject","subjects","submission","submit","submitted","subscribe","subscription","subsequent","subsequently","substance","substantial","substitute","subtle","subway","succeed","succeeded","success","successful","successfully","such","suck","sucks","sudden","suddenly","sue","suffer","suffered","suffering","sufficient","sugar","suggest","suggested","suggesting","suggestion","suggestions","suggests","suicide","suit","suitable","suite","suited","suits","sum","summary","summer","summit","sun","sunday","sunny","sunset","sunshine","super","superior","superman","supplement","supplied","supplies","supply","support","supported","supporter","supporters","supporting","supportive","supports","suppose","supposed","supreme","sure","surely","surface","surfaces","surgeon","surgery","surgical","surprise","surprised","surprising","surprisingly","surrender","surrounded","surrounding","surveillance","survey","survival","survive","survived","surviving","survivors","susan","suspect","suspected","suspended","suspension","suspicious","sustainable","sustained","swear","sweat","sweden","swedish","sweet","swift","swim","swimming","swing","swiss","switch","switched","switching","switzerland","sword","sydney","symbol","symbols","sympathy","symptoms","syndrome","syria","syrian","system","systems","ta","table","tables","tablet","tackle","tactics","tag","tail","taiwan","take","taken","takes","taking","tale","talent","talented","tales","talk","talked","talking","talks","tall","tan","tank","tanks","tap","tape","target","targeted","targets","task","tasks","taste","tastes","tattoo","taught","tax","taxes","taxi","taylor","tbh","te","tea","teach","teacher","teachers","teaching","team","team's","teams","tear","tears","tech","technical","technically","technique","techniques","technological","technologies","technology","ted","teen","teenage","teenager","teenagers","teens","teeth","telephone","television","tell","telling","tells","temperature","temperatures","temple","temporarily","temporary","ten","tend","tender","tends","tennessee","tennis","tension","tent","term","terminal","terms","terrible","territories","territory","terror","terrorism","terrorist","terrorists","terry","test","testament","tested","testimony","testing","tests","texas","text","texts","th","thai","thailand","than","thank","thanks","thanksgiving","that","that's","thats","the","theater","theatre","thee","theft","their","them","theme","themes","themselves","then","theoretical","theories","theory","therapy","there","there's","thereby","therefore","thermal","these","thesis","they","they'd","they'll","they're","they've","thick","thin","thing","things","think","thinking","thinks","third","thirty","this","tho","thomas","thompson","thoroughly","those","thou","though","thought","thoughts","thousand","thousands","thread","threat","threatened","threatening","threats","three","threshold","threw","throat","throne","through","throughout","throw","throwing","thrown","throws","thumb","thunder","thursday","thus","thy","ticket","tickets","tide","tie","tied","tier","ties","tiger","tigers","tight","til","till","tim","timber","time","timeline","times","timing","tin","tiny","tip","tips","tire","tired","tires","tissue","title","titled","titles","tl","to","tobacco","today","today's","todd","toe","together","toilet","tokyo","told","tolerance","toll","tom","tommy","tomorrow","ton","tone","tongue","tonight","tons","tony","too","took","tool","tools","tooth","top","topic","topics","tops","torn","toronto","torture","total","totally","touch","touched","touching","tough","tour","tourism","tourist","tourists","tournament","tours","toward","towards","tower","towers","town","towns","toxic","toy","toys","trace","track","tracking","tracks","trade","traded","trades","trading","tradition","traditional","traditionally","traditions","traffic","tragedy","tragic","trail","trailer","train","trained","trainer","training","trains","trans","transaction","transactions","transfer","transferred","transfers","transform","transformation","transformed","transit","transition","translated","translation","transmission","transparent","transport","transportation","trap","trapped","trash","trauma","travel","traveled","traveling","travelling","travels","travis","treasure","treasury","treat","treated","treating","treatment","treatments","treats","treaty","tree","trees","tremendous","trend","trends","trial","trials","tribal","tribe","tribes","tribute","trick","tricks","tried","tries","trigger","trip","triple","trips","troops","trophy","tropical","trouble","truck","trucks","true","truly","trump","trump's","trunk","trust","trusted","truth","try","trying","tube","tuesday","tune","tunnel","turkey","turkish","turn","turned","turner","turning","turns","tv","tweet","tweeted","tweets","twelve","twenty","twice","twin","twins","twist","twitter","two","tx","tyler","type","types","typical","typically","ugh","ugly","uh","uk","ukraine","ukrainian","ultimate","ultimately","ultra","um","un","unable","unbelievable","uncertainty","uncle","uncomfortable","under","underground","underlying","underneath","understand","understanding","understands","understood","unemployment","unexpected","unfair","unfortunate","unfortunately","unhappy","uniform","union","unions","unique","unit","united","units","unity","universal","universe","universities","university","unknown","unless","unlike","unlikely","unlimited","unnecessary","until","unusual","up","upcoming","update","updated","updates","upgrade","upon","upper","ups","upset","upside","urban","urge","urged","urgent","us","usa","usage","use","used","useful","useless","user","users","uses","using","usual","usually","utah","utility","utterly","va","vacation","vacuum","valid","valley","valuable","value","valued","values","valve","vampire","van","vancouver","variable","variation","variations","varied","variety","various","vary","vast","ve","vegas","vegetables","vehicle","vehicles","venture","venue","verdict","verse","version","versions","versus","vertical","very","vessel","vessels","veteran","veterans","vi","via","vice","victim","victims","victor","victoria","victorian","victory","video","videos","vietnam","view","viewed","viewers","viewing","views","villa","village","villages","vincent","vintage","violation","violence","violent","viral","virgin","virginia","virtual","virtually","virus","visa","visible","vision","visit","visited","visiting","visitor","visitors","visits","visual","vital","vocal","voice","voices","vol","voltage","volume","volumes","volunteer","volunteers","von","vote","voted","voter","voters","votes","voting","vs","vulnerable","wa","wage","wages","wait","waited","waiting","wake","wales","walk","walked","walker","walking","walks","wall","wallace","wallet","walls","walter","wanna","want","wanted","wanting","wants","war","ward","warehouse","warfare","warm","warming","warn","warned","warner","warning","warrant","warren","warrior","warriors","wars","was","wash","washed","washing","washington","wasn't","waste","wasted","wasting","watch","watched","watches","watching","water","waters","watson","wave","waves","way","wayne","ways","we","we'd","we'll","we're","we've","weak","weakness","wealth","wealthy","weapon","weapons","wear","wearing","wears","weather","web","website","websites","wedding","wednesday","weed","week","week's","weekend","weekends","weekly","weeks","weight","weird","welcome","welfare","well","wells","welsh","went","were","weren't","west","western","wet","what","what's","whatever","wheel","wheels","when","whenever","where","where's","whereas","wherever","whether","which","while","whilst","white","whites","who","who's","whoever","whole","whom","whose","why","wi","wide","widely","wider","widespread","widow","width","wife","wild","wildlife","will","william","williams","willing","wilson","win","wind","window","windows","winds","wine","wing","wings","winner","winners","winning","wins","winter","wire","wireless","wisconsin","wisdom","wise","wish","wishes","witch","with","withdraw","withdrawal","within","without","witness","witnessed","witnesses","wives","woke","wolf","woman","woman's","women","women's","won","won't","wonder","wondered","wonderful","wondering","wont","wood","wooden","woods","word","words","wore","work","worked","worker","workers","working","workout","workplace","works","workshop","world","world's","worlds","worldwide","worn","worried","worries","worry","worrying","worse","worship","worst","worth","worthy","would","would've","wouldn't","wound","wounded","wounds","wow","wrap","wrapped","wrestling","wright","write","writer","writers","writes","writing","written","wrong","wrote","wtf","xbox","xi","ya","yard","yards","ye","yea","yeah","year","year's","years","yelling","yellow","yep","yes","yesterday","yet","yield","yo","yoga","york","yorkshire","you","you'd","you'll","you're","you've","young","younger","youngest","your","yours","yourself","youth","youtube","yup","zealand","zero","zone","zones","zoo"];
+var DICT_SET = new Set(DICTIONARY);
+var CONFUSABLE_GROUPS = [["their","there","they're"],["too","two"],["your","you're"],["its","it's"],["then","than"],["were","where","we're","wear"],["know","now"],["who's","whose"],["form","from"],["quite","quiet"],["though","thought","through"],["loose","lose"],["accept","except"],["weather","whether"],["affect","effect"],["write","right"],["here","hear"],["new","knew"],["break","brake"],["piece","peace"],["allowed","aloud"],["board","bored"],["past","passed"],["principal","principle"],["desert","dessert"],["complement","compliment"],["advice","advise"],["led","lead"],["chose","choose"],["clothes","close"],["angel","angle"]];
+var CONFUSABLE_MAP = {};
+CONFUSABLE_GROUPS.forEach(function(g){ g.forEach(function(w){ CONFUSABLE_MAP[w] = g; }); });
+
+var BY_LENGTH = {};
+DICTIONARY.forEach(function(w){
+  var L = w.length;
+  (BY_LENGTH[L] = BY_LENGTH[L] || []).push(w);
+});
+
+function phoneticKey(w){
+  var s = w.toLowerCase().replace(/[^a-z]/g,'');
+  s = s.replace(/ph/g,'f').replace(/wh/g,'w').replace(/qu/g,'kw')
+       .replace(/ck/g,'k').replace(/gh/g,'g').replace(/kn/g,'n').replace(/wr/g,'r');
+  s = s.replace(/[aeiouy]+/g,'a');
+  s = s.replace(/(.)\1+/g,'$1');
+  return s;
+}
+var PHONETIC_MAP = {};
+DICTIONARY.forEach(function(w){
+  var k = phoneticKey(w);
+  (PHONETIC_MAP[k] = PHONETIC_MAP[k] || []).push(w);
+});
+
+/* Damerau-Levenshtein distance, capped */
+function editDistance(a,b,max){
+  max = max || 3;
+  if (Math.abs(a.length-b.length) > max) return max+1;
+  var al=a.length, bl=b.length;
+  var d = [];
+  for (var i=0;i<=al;i++){ d[i]=[i]; }
+  for (var j=0;j<=bl;j++){ d[0][j]=j; }
+  for (i=1;i<=al;i++){
+    for (j=1;j<=bl;j++){
+      var cost = a[i-1]===b[j-1] ? 0 : 1;
+      var val = Math.min(
+        d[i-1][j]+1,
+        d[i][j-1]+1,
+        d[i-1][j-1]+cost
+      );
+      if (i>1 && j>1 && a[i-1]===b[j-2] && a[i-2]===b[j-1]){
+        val = Math.min(val, d[i-2][j-2]+1);
+      }
+      d[i][j]=val;
+    }
+  }
+  return d[al][bl];
+}
+
+function bestLocalSuggestion(word){
+  var lw = word.toLowerCase();
+  if (DICT_SET.has(lw)) return null;
+  var candidates = [];
+  for (var dl=-2; dl<=2; dl++){
+    var L = lw.length+dl;
+    if (BY_LENGTH[L]) candidates = candidates.concat(BY_LENGTH[L]);
+  }
+  var best=null, bestDist=3;
+  for (var i=0;i<candidates.length;i++){
+    var dist = editDistance(lw, candidates[i], 2);
+    if (dist < bestDist){ bestDist = dist; best = candidates[i]; if (dist<=1) break; }
+  }
+  if (best) return {suggestion:best, confidence: bestDist<=1?'high':'medium'};
+  var key = phoneticKey(lw);
+  var pool = PHONETIC_MAP[key];
+  if (pool && pool.length){
+    var pbest=null, pbestDist=99;
+    for (i=0;i<pool.length;i++){
+      var d2 = editDistance(lw, pool[i], 5);
+      if (d2 < pbestDist){ pbestDist=d2; pbest=pool[i]; }
+    }
+    if (pbest) return {suggestion:pbest, confidence:'low'};
+  }
+  return {suggestion:null, confidence:'low'};
+}
+
+function matchCase(sample, target){
+  if (sample === sample.toUpperCase() && sample !== sample.toLowerCase()) return target.toUpperCase();
+  if (sample[0] === sample[0].toUpperCase()) return target.charAt(0).toUpperCase()+target.slice(1);
+  return target;
+}
+
+/* ---------------- local pass ---------------- */
+function localCheck(text){
+  var flags = [];
+  var re = /[A-Za-z']+/g;
+  var m;
+  while ((m = re.exec(text))) {
+    var word = m[0];
+    var lw = word.toLowerCase();
+    var start = m.index, end = start+word.length;
+    if (!DICT_SET.has(lw)) {
+      var sug = bestLocalSuggestion(word);
+      flags.push({
+        start:start, end:end, original:word,
+        suggestion: sug && sug.suggestion ? matchCase(word, sug.suggestion) : null,
+        type:'spelling', source:'local', confidence: sug?sug.confidence:'low',
+        explanation: sug && sug.suggestion ? "This isn't a word I know — did you mean “"+sug.suggestion+"”?" : "This isn't a word I recognize — check the spelling."
+      });
+    } else if (CONFUSABLE_MAP[lw]) {
+      flags.push({
+        start:start, end:end, original:word,
+        suggestion:null, type:'confusable', source:'local', confidence:'low',
+        explanation: "Easy to mix up with “"+CONFUSABLE_MAP[lw].filter(function(x){return x!==lw;}).join('” / “')+"” — worth a second look."
+      });
+    }
+  }
+  return flags;
+}
+
+/* ---------------- LLM pass ---------------- */
+function buildPrompt(text, localFlags){
+  var hints = localFlags.map(function(f){ return f.original; }).slice(0,40);
+  return "You are a patient, encouraging writing tutor for a child with dyslexia. " +
+    "Find genuine spelling, grammar, punctuation and word-choice mistakes in the paragraph below — " +
+    "especially “real word” mistakes, where a word is spelled correctly but is the WRONG word for the sentence " +
+    "(very common in dyslexic writing — e.g. writing “licker” instead of “like”, or “grader” instead of “garden”). " +
+    "Use the rest of the paragraph to figure out what the writer meant.\n\n" +
+    "A quick local spellchecker already flagged these spots as possibly wrong (double-check each one — some may already be fine): " +
+    JSON.stringify(hints) + "\n\n" +
+    "Rules:\n" +
+    "- Only include things that are genuinely wrong. Do not suggest style changes or make it fancier.\n" +
+    "- \"original\" must be an EXACT short snippet (1-6 words) copied verbatim from the paragraph, matching spelling and case.\n" +
+    "- \"suggestion\" is the corrected version of just that snippet.\n" +
+    "- \"explanation\" is one short, warm, simple sentence (max 18 words) a child would understand, explaining WHY using the meaning of the sentence — not just “this is a typo”.\n" +
+    "- \"type\" is one of: spelling, grammar, punctuation, word choice.\n" +
+    "- Reply with ONLY a JSON array, no other text. Example:\n" +
+    "[{\"original\":\"he are\",\"suggestion\":\"he is\",\"type\":\"grammar\",\"explanation\":\"Use 'is' when talking about one person.\"}]\n\n" +
+    "Paragraph:\n\"\"\"\n" + text + "\n\"\"\"";
+}
+
+function locateSnippet(text, snippet, usedRanges){
+  if (!snippet) return null;
+  function tryFind(hay, needle){
+    var from = 0;
+    while (true){
+      var idx = hay.indexOf(needle, from);
+      if (idx === -1) return -1;
+      var overlaps = usedRanges.some(function(r){ return idx < r.end && idx+needle.length > r.start; });
+      if (!overlaps) return idx;
+      from = idx+1;
+    }
+  }
+  var idx = tryFind(text, snippet);
+  if (idx === -1) idx = tryFind(text.toLowerCase(), snippet.toLowerCase());
+  if (idx === -1) return null;
+  return {start:idx, end:idx+snippet.length};
+}
+
+/* ---------------- app state ---------------- */
+var state = {
+  text: "",
+  flags: [],           // {start,end,original,suggestion,type,source,explanation,status:'open'|'fixed'|'revealed'|'skipped'}
+  reviewing: false,
+  sessions: []
+};
+
+var editor = document.getElementById('editor');
+var reviewedEl = document.getElementById('reviewed');
+var wordcountEl = document.getElementById('wordcount');
+var statusEl = document.getElementById('status');
+var bannersEl = document.getElementById('banners');
+var btnCheck = document.getElementById('btnCheck');
+var btnEditAgain = document.getElementById('btnEditAgain');
+var btnFinish = document.getElementById('btnFinish');
+var useAI = document.getElementById('useAI');
+
+editor.addEventListener('input', function(){
+  var words = editor.value.trim().length ? editor.value.trim().split(/\s+/).length : 0;
+  wordcountEl.textContent = words + (words===1?' word':' words');
+});
+
+document.querySelectorAll('.tab').forEach(function(tab){
+  tab.addEventListener('click', function(){
+    document.querySelectorAll('.tab').forEach(function(t){ t.setAttribute('aria-selected', t===tab ? 'true':'false'); });
+    document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
+    document.getElementById('view-'+tab.dataset.view).classList.add('active');
+    if (tab.dataset.view === 'progress') renderProgress();
+  });
+});
+
+function setStatus(msg, busy){
+  statusEl.textContent = msg || "";
+  statusEl.classList.toggle('busy', !!busy);
+}
+function showBanner(kind, msg){
+  bannersEl.innerHTML = '<div class="banner '+kind+'">'+msg+'</div>';
+}
+function clearBanner(){ bannersEl.innerHTML = ""; }
+
+function escapeHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderReviewed(){
+  var text = state.text;
+  var flags = state.flags.slice().sort(function(a,b){ return a.start-b.start; });
+
+  // Every other word is clickable too, so a word the checker missed or wasn't
+  // sure about (like a real-word mix-up it never flagged) can still be asked about by hand.
+  var askRanges = [];
+  var re = /[A-Za-z']+/g, m;
+  while ((m = re.exec(text))) {
+    var s = m.index, e = s + m[0].length;
+    var overlap = flags.some(function(f){ return s < f.end && e > f.start; });
+    if (!overlap) askRanges.push({start:s, end:e});
+  }
+  var regions = flags.map(function(f,i){ return {start:f.start, end:f.end, kind:'flag', idx:i}; })
+    .concat(askRanges.map(function(r){ return {start:r.start, end:r.end, kind:'ask'}; }));
+  regions.sort(function(a,b){ return a.start-b.start; });
+
+  var out = "";
+  var pos = 0;
+  regions.forEach(function(r){
+    if (r.start < pos) return;
+    out += escapeHtml(text.slice(pos, r.start));
+    if (r.kind === 'flag'){
+      var f = flags[r.idx];
+      var cls = 'f-' + f.type.replace(' ','_');
+      var resolvedCls = f.status !== 'open' ? ' resolved' : '';
+      out += '<mark class="'+cls+resolvedCls+'" data-kind="flag" data-idx="'+r.idx+'">'+escapeHtml(text.slice(r.start,r.end))+'</mark>';
+    } else {
+      out += '<span class="askword" data-kind="ask" data-start="'+r.start+'" data-end="'+r.end+'">'+escapeHtml(text.slice(r.start,r.end))+'</span>';
+    }
+    pos = r.end;
+  });
+  out += escapeHtml(text.slice(pos));
+  reviewedEl.innerHTML = out || "<span style=\"color:var(--text-muted)\">(empty)</span>";
+
+  reviewedEl.querySelectorAll('mark').forEach(function(el){
+    el.addEventListener('click', function(){
+      var idx = +el.dataset.idx;
+      openPopover(state.flags.indexOf(flags[idx]));
+    });
+  });
+  reviewedEl.querySelectorAll('.askword').forEach(function(el){
+    el.addEventListener('click', function(){
+      var start = +el.dataset.start, end = +el.dataset.end;
+      var already = state.flags.findIndex(function(f){ return f.start < end && f.end > start; });
+      if (already > -1){ openPopover(already); return; }
+      state.flags.push({
+        start:start, end:end, original: state.text.slice(start,end), suggestion:null,
+        type:'ask', source:'manual', status:'open',
+        explanation:"Want help with this word? Type what you think it should be, or press “Say it” and speak it out loud."
+      });
+      openPopover(state.flags.length-1);
+    });
+  });
+}
+
+function spliceText(flagIndex, newWord){
+  var f = state.flags[flagIndex];
+  var oldStart = f.start, oldEnd = f.end;
+  var delta = newWord.length - (oldEnd - oldStart);
+  state.text = state.text.slice(0, oldStart) + newWord + state.text.slice(oldEnd);
+  state.flags.forEach(function(other){
+    if (other === f) return;
+    if (other.start >= oldEnd){
+      other.start += delta; other.end += delta;
+    }
+  });
+  f.start = oldStart; f.end = oldStart + newWord.length;
+}
+
+/* ---------------- popover ---------------- */
+var overlay = document.getElementById('overlay');
+var popKind = document.getElementById('popKind');
+var popOriginal = document.getElementById('popOriginal');
+var popExplain = document.getElementById('popExplain');
+var popInput = document.getElementById('popInput');
+var popFeedback = document.getElementById('popFeedback');
+var popReveal = document.getElementById('popReveal');
+var currentFlagIndex = null;
+
+var TYPE_LABEL = {spelling:'Spelling', grammar:'Grammar', punctuation:'Punctuation', confusable:'Wrong word', 'word choice':'Wrong word', ask:'Need help?'};
+var TYPE_VAR = {spelling:'warn', grammar:'info', punctuation:'special', confusable:'confusable', 'word choice':'confusable', ask:'accent'};
+var popVoiceHint = document.getElementById('popVoiceHint');
+
+function openPopover(idx){
+  currentFlagIndex = idx;
+  var f = state.flags[idx];
+  var v = TYPE_VAR[f.type] || 'warn';
+  popKind.textContent = TYPE_LABEL[f.type] || f.type;
+  popKind.style.background = v==='accent' ? 'var(--accent-soft)' : 'var(--'+v+'-soft)';
+  popKind.style.color = v==='accent' ? 'var(--accent-strong)' : 'var(--'+v+')';
+  popOriginal.innerHTML = f.type==='ask' ? '“'+escapeHtml(f.original)+'”' : '“<s>'+escapeHtml(f.original)+'</s>”';
+  popExplain.textContent = f.explanation || "Take a look at this part.";
+  popInput.value = f.status === 'open' ? "" : (f.userAnswer || "");
+  popFeedback.textContent = "";
+  popFeedback.className = "feedback";
+  popReveal.classList.remove('show');
+  popReveal.textContent = "";
+  // nudge toward the mic whenever there's no confident suggestion to fall back on --
+  // this is exactly the case (a real word used wrongly, like "licker" for "like") where
+  // hearing the word said aloud catches things text-only checking misses.
+  popVoiceHint.style.display = !f.suggestion ? 'flex' : 'none';
+  overlay.classList.add('show');
+  setTimeout(function(){ popInput.focus(); }, 50);
+}
+function closePopover(){
+  // an unresolved "ask" flag was just exploratory -- don't leave a permanent mark behind for it
+  if (currentFlagIndex !== null){
+    var f = state.flags[currentFlagIndex];
+    if (f && f.type === 'ask' && f.status === 'open'){
+      state.flags.splice(currentFlagIndex, 1);
+      renderReviewed();
+    }
+  }
+  overlay.classList.remove('show');
+  currentFlagIndex = null;
+}
+document.getElementById('popClose').addEventListener('click', closePopover);
+overlay.addEventListener('click', function(e){ if (e.target===overlay) closePopover(); });
+
+function normalize(s){ return s.trim().toLowerCase().replace(/[.,!?;:"']/g,''); }
+
+document.getElementById('popTry').addEventListener('click', function(){
+  var f = state.flags[currentFlagIndex];
+  var val = popInput.value.trim();
+  if (!val){ popFeedback.textContent = "Type your best guess first."; popFeedback.className="feedback"; return; }
+  f.userAnswer = val;
+  var target = f.suggestion;
+  var isMatch = target ? normalize(val) === normalize(target) : normalize(val) !== normalize(f.original);
+  if (isMatch){
+    popFeedback.textContent = "✅ Nice fix!";
+    popFeedback.className = "feedback good";
+    f.status = 'fixed';
+    spliceText(currentFlagIndex, target || val);
+    speak((target||val));
+    setTimeout(function(){ closePopover(); renderReviewed(); checkAllResolved(); }, 700);
+  } else {
+    popFeedback.textContent = "Not quite — want a hint? Try “Hear it” or “Show me”.";
+    popFeedback.className = "feedback bad";
+  }
+});
+
+document.getElementById('popHear').addEventListener('click', function(){
+  var f = state.flags[currentFlagIndex];
+  var target = f.suggestion || f.original;
+  var before = state.text.slice(Math.max(0,f.start-40), f.start).split(' ').slice(-5).join(' ');
+  var after = state.text.slice(f.end, f.end+40).split(' ').slice(0,5).join(' ');
+  speak((before+' '+target+' '+after).trim());
+});
+
+/* ---------------- speak-it-instead-of-typing-it ----------------
+   Text-only checking runs out of ideas fast on a real-word swap like
+   "licker" for "like" -- there's no misspelling to fix, just the wrong
+   word. Hearing the student say the word out loud gives a second,
+   independent signal (how it SOUNDS) instead of only how it's spelled,
+   so it catches cases the text-based passes are stuck on. */
+var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+var recognizer = null;
+var popMic = document.getElementById('popMic');
+if (SpeechRec){
+  try {
+    recognizer = new SpeechRec();
+    recognizer.lang = 'en-US';
+    recognizer.interimResults = false;
+    recognizer.maxAlternatives = 1;
+  } catch(e){ recognizer = null; }
+}
+if (!recognizer) popMic.style.display = 'none';
+
+var micListening = false;
+var micTimeout = null;
+var micBlockedForSession = false; // set once we get a non-retryable error, so we stop offering something that can't work here
+
+function setMicListening(on){
+  micListening = on;
+  popMic.classList.toggle('listening', on);
+  popMic.textContent = on ? '🎤 Listening…' : '🎤 Say it';
+}
+
+// Speech recognition needs microphone access, which some embedded/iframed views
+// block for pages they didn't grant it to directly -- so failures here are reported
+// explicitly instead of a generic "didn't catch that", since the real cause is
+// usually "the mic never turned on at all", not "it misheard you".
+function micErrorMessage(code){
+  switch(code){
+    case 'not-allowed':
+    case 'permission-denied':
+      return { text:"Microphone access was blocked or never prompted — look for a mic icon in your address bar, or open this page in its own browser tab instead of inside Claude, then try again.", retry:true };
+    case 'no-speech':
+      return { text:"I didn't hear anything — press “Say it” and speak right away.", retry:true };
+    case 'audio-capture':
+      return { text:"No microphone was found on this device.", retry:true };
+    case 'network':
+      return { text:"Voice input needs an internet connection to work.", retry:true };
+    case 'service-not-allowed':
+      return { text:"Voice input isn't allowed in this window (this can happen inside an embedded page) — try opening this artifact in its own browser tab, or just type your answer.", retry:false };
+    case 'aborted':
+      return { text:"Voice input stopped early — try again.", retry:true };
+    default:
+      return { text:"Voice input didn't work here (" + (code || "unknown error") + ") — type your answer instead.", retry:false };
+  }
+}
+
+if (recognizer){
+  recognizer.onresult = function(e){
+    if (micTimeout) { clearTimeout(micTimeout); micTimeout = null; }
+    var transcript = (e.results[0] && e.results[0][0] && e.results[0][0].transcript || '').trim();
+    if (transcript) handleSpokenWord(transcript);
+    else { popFeedback.textContent = "I didn't catch a word there — try again."; popFeedback.className = "feedback bad"; }
+  };
+  recognizer.onerror = function(e){
+    if (micTimeout) { clearTimeout(micTimeout); micTimeout = null; }
+    var info = micErrorMessage(e && e.error);
+    popFeedback.textContent = info.text;
+    popFeedback.className = "feedback bad";
+    if (!info.retry){
+      micBlockedForSession = true;
+      popMic.disabled = true;
+      popMic.title = "Voice input isn't available here — try typing instead.";
+    }
+  };
+  recognizer.onend = function(){ setMicListening(false); };
+}
+
+popMic.addEventListener('click', function(){
+  if (!recognizer || micListening) return;
+  if (micBlockedForSession){
+    popFeedback.textContent = "Voice input isn't available in this window — type your answer instead.";
+    popFeedback.className = "feedback bad";
+    return;
+  }
+  popFeedback.textContent = "";
+  popFeedback.className = "feedback";
+  setMicListening(true);
+  // guard against the mic silently hanging (no onresult/onerror/onend at all) --
+  // that reads to a student as "I said it and nothing happened".
+  micTimeout = setTimeout(function(){
+    if (micListening){
+      try { recognizer.stop(); } catch(e){}
+      setMicListening(false);
+      popFeedback.textContent = "That took too long — the microphone may be blocked here. Try opening this artifact in its own browser tab, or just type your answer.";
+      popFeedback.className = "feedback bad";
+    }
+  }, 8000);
+  try {
+    recognizer.start();
+  } catch(e){
+    if (micTimeout) { clearTimeout(micTimeout); micTimeout = null; }
+    setMicListening(false);
+    popFeedback.textContent = "Couldn't start the microphone (" + ((e && e.name) || "error") + ") — type your answer instead.";
+    popFeedback.className = "feedback bad";
+    micBlockedForSession = true;
+    popMic.disabled = true;
+  }
+});
+
+async function handleSpokenWord(transcript){
+  var f = state.flags[currentFlagIndex];
+  if (!f) return;
+  var heard = transcript.replace(/[.,!?;:]+$/,'');
+  popInput.value = heard;
+
+  // already have a confident suggestion? just check what they said against it, like typing would.
+  if (f.suggestion){
+    popFeedback.textContent = "Heard “"+heard+"” — press “Check my fix” to see if that's it.";
+    popFeedback.className = "feedback";
+    return;
+  }
+  // no suggestion yet (the tricky case): if what they SAID is a real, known word, offer it right away --
+  // no AI call needed, this is just the local dictionary confirming a real word was spoken.
+  var lw = heard.toLowerCase().replace(/[^a-z']/g,'');
+  if (DICT_SET.has(lw)){
+    var cased = matchCase(f.original, lw);
+    f.suggestion = cased;
+    f.explanation = "You said “"+heard+"” — that fits! Press “Check my fix” to use it.";
+    popExplain.textContent = f.explanation;
+    popInput.value = cased;
+    popFeedback.textContent = "";
+    popVoiceHint.style.display = 'none';
+    return;
+  }
+  // otherwise ask Claude to combine the spelling AND how it sounded -- a small, fast, targeted
+  // call (not the full paragraph pass), since this is one word with one extra clue, not a re-check.
+  if (!aiConfigured()){
+    popFeedback.textContent = "Heard “"+heard+"” — type it in if that's what you meant.";
+    return;
+  }
+  popFeedback.textContent = "Thinking about how that sounds…";
+  popFeedback.className = "feedback";
+  try{
+    var before = state.text.slice(Math.max(0,f.start-70), f.start);
+    var after = state.text.slice(f.end, f.end+70);
+    var prompt = "A student with dyslexia wrote the word \""+f.original+"\" in this sentence: \""+before+"["+f.original+"]"+after+"\". "+
+      "It might be wrong. They just said the word out loud to help explain what they meant, and it sounded like \""+heard+"\". "+
+      "Using BOTH how they spelled it and how it sounded, figure out the one correctly-spelled English word that fits the sentence. "+
+      "Reply with ONLY a JSON object like {\"suggestion\":\"garden\",\"explanation\":\"one short, warm sentence a child would understand\"}.";
+    var result = await callAI(prompt, "claude-haiku-4-5-20251001", 300);
+    if (result && typeof result.suggestion === 'string'){
+      f.suggestion = matchCase(f.original, result.suggestion);
+      f.explanation = result.explanation || ("Based on how you said it, this should be “"+result.suggestion+"”.");
+      f.type = f.type === 'ask' ? 'word choice' : f.type;
+      popExplain.textContent = f.explanation;
+      popInput.value = f.suggestion;
+      popFeedback.textContent = "";
+      popVoiceHint.style.display = 'none';
+    } else {
+      popFeedback.textContent = "Heard “"+heard+"” — type it in if that's what you meant.";
+    }
+  }catch(e){
+    popFeedback.textContent = "Heard “"+heard+"” — type it in if that's what you meant.";
+  }
+}
+
+document.getElementById('popShow').addEventListener('click', function(){
+  var f = state.flags[currentFlagIndex];
+  if (f.suggestion){
+    popReveal.textContent = "The fix: “"+f.suggestion+"”";
+    popReveal.classList.add('show');
+    popInput.value = f.suggestion;
+  } else {
+    popReveal.textContent = "Try sounding it out slowly, letter by letter.";
+    popReveal.classList.add('show');
+  }
+});
+
+document.getElementById('popSkip').addEventListener('click', function(){
+  var f = state.flags[currentFlagIndex];
+  f.status = 'skipped';
+  closePopover();
+  renderReviewed();
+  checkAllResolved();
+});
+
+function checkAllResolved(){
+  var open = state.flags.filter(function(f){ return f.status === 'open'; }).length;
+  if (open === 0 && state.flags.length){
+    setStatus("All spots checked! Press “Finish & save progress” when you're ready.");
+  }
+}
+
+/* ---------------- speech ---------------- */
+function speak(t){
+  try{
+    window.speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance(t);
+    u.rate = 0.92;
+    window.speechSynthesis.speak(u);
+  }catch(e){}
+}
+document.getElementById('btnReadAloud').addEventListener('click', function(){
+  var t = state.reviewing ? state.text : editor.value;
+  if (t.trim()) speak(t);
+});
+
+/* ---------------- check flow ---------------- */
+btnCheck.addEventListener('click', function(){
+  var text = editor.value.trim();
+  if (!text){ setStatus("Write a paragraph first."); return; }
+  clearBanner();
+  state.text = text;
+  var localFlags = localCheck(text);
+  localFlags.forEach(function(f){ f.status='open'; });
+  state.flags = localFlags;
+  state.reviewing = true;
+  editor.style.display = 'none';
+  reviewedEl.style.display = 'block';
+  btnCheck.style.display = 'none';
+  btnEditAgain.style.display = 'inline-flex';
+  btnFinish.style.display = 'inline-flex';
+  renderReviewed();
+
+  if (!useAI.checked){
+    setStatus(localFlags.length ? ("Instant check found "+localFlags.length+" spot"+(localFlags.length===1?"":"s")+" to look at.") : "Instant check found nothing — nice work!");
+    return;
+  }
+  setStatus("Instant check found "+localFlags.length+" possible spot"+(localFlags.length===1?"":"s")+". Asking Claude for a deeper look…", true);
+  runAIPass(text, localFlags);
+});
+
+async function runAIPass(text, localFlags){
+  if (!aiConfigured()){
+    setStatus("Deeper AI check isn't set up yet — showing the instant results only.");
+    showBanner('info', "This site's AI checking backend hasn't been configured yet (see README-deploy.md) — only the instant spelling check ran.");
+    return;
+  }
+  try{
+    var prompt = buildPrompt(text, localFlags);
+    var result = await callAI(prompt, "claude-sonnet-5", 1200);
+    if (!Array.isArray(result)) throw new Error("bad shape");
+    var used = state.flags.map(function(f){ return {start:f.start,end:f.end}; });
+    var aiLocs = []; // exact spans the AI actually confirmed, for precise per-occurrence noise reduction below
+    var added = 0, upgraded = 0;
+    result.forEach(function(item){
+      if (!item || typeof item.original !== 'string' || typeof item.suggestion !== 'string') return;
+      var loc = locateSnippet(text, item.original, used);
+      if (!loc) return;
+      used.push(loc);
+      aiLocs.push(loc);
+      // does this overlap an existing local flag? if so, upgrade it
+      var overlapIdx = -1;
+      state.flags.forEach(function(f,i){ if (f.start < loc.end && f.end > loc.start) overlapIdx = i; });
+      var type = (item.type||'spelling').toLowerCase().indexOf('word')===0 ? 'word choice' : item.type;
+      if (['spelling','grammar','punctuation','word choice'].indexOf(type)===-1) type = 'grammar';
+      if (overlapIdx > -1){
+        var f = state.flags[overlapIdx];
+        f.start = loc.start; f.end = loc.end; f.original = item.original;
+        f.suggestion = item.suggestion; f.type = type; f.source='ai'; f.explanation = item.explanation || f.explanation;
+        upgraded++;
+      } else {
+        state.flags.push({
+          start:loc.start, end:loc.end, original:item.original, suggestion:item.suggestion,
+          type:type, source:'ai', status:'open', explanation: item.explanation || ("This should be “"+item.suggestion+"”.")
+        });
+        added++;
+      }
+    });
+    // drop local-only spelling flags the AI looked at but didn't confirm (reduce noise),
+    // but only when AI actually returned results (already inside try) and only for LOW-confidence local guesses.
+    // Checked by exact span overlap against what the AI actually confirmed (aiLocs) rather than a text-wide
+    // substring search -- a word like "its" can appear more than once in a paragraph, correctly one place and
+    // wrongly another, and a substring match can't tell those occurrences apart.
+    state.flags = state.flags.filter(function(f){
+      if (f.source === 'local' && f.confidence === 'low' && f.type==='confusable') {
+        return aiLocs.some(function(loc){ return loc.start < f.end && loc.end > f.start; });
+      }
+      return true;
+    });
+    renderReviewed();
+    setStatus("Deeper check complete — "+state.flags.filter(function(f){return f.status==='open';}).length+" spot"+(state.flags.length===1?"":"s")+" to look at.");
+  }catch(e){
+    if (e && e.status === 429){
+      showBanner('warn', "You've used a lot of AI checks right now — try again in a bit. Instant results are still shown.");
+    } else if (e && e.status === 0){
+      showBanner('warn', "Couldn't reach the AI backend — showing the instant results only.");
+    } else {
+      showBanner('warn', "The deeper check hit a snag — showing the instant results only.");
+    }
+    setStatus("");
+  }
+}
+
+btnEditAgain.addEventListener('click', function(){
+  editor.value = state.text;
+  editor.style.display = 'block';
+  reviewedEl.style.display = 'none';
+  btnCheck.style.display = 'inline-flex';
+  btnEditAgain.style.display = 'none';
+  btnFinish.style.display = 'none';
+  state.reviewing = false;
+  setStatus("");
+  clearBanner();
+  editor.dispatchEvent(new Event('input'));
+});
+
+btnFinish.addEventListener('click', function(){
+  var byType = {spelling:0, grammar:0, punctuation:0, 'word choice':0};
+  var fixed=0, revealed=0, skipped=0, helpRequests=0;
+  state.flags.forEach(function(f){
+    if (f.type === 'ask'){ helpRequests++; return; } // self-initiated lookups aren't counted as "errors"
+    byType[f.type] = (byType[f.type]||0)+1;
+    if (f.status==='fixed') fixed++;
+    else if (f.status==='skipped') skipped++;
+    else revealed++; // open or revealed both count as "not self-fixed" for honesty
+  });
+  var words = state.text.trim().length ? state.text.trim().split(/\s+/).length : 0;
+  var errorFlagCount = state.flags.length - helpRequests;
+  var record = {
+    date: new Date().toISOString(), words:words,
+    spelling: byType.spelling, grammar: byType.grammar, punctuation: byType.punctuation, wordChoice: byType['word choice'],
+    total: errorFlagCount, selfFixed: fixed, revealed: revealed, skipped: skipped, helpRequests: helpRequests,
+    aiUsed: useAI.checked
+  };
+  state.sessions.push(record);
+  if (state.sessions.length > 100) state.sessions = state.sessions.slice(-100);
+  saveProgress();
+  showBanner('info', "Saved! Check “My Progress” to see how you're doing over time.");
+  setStatus("Nice work — "+fixed+" of "+errorFlagCount+" spot"+(errorFlagCount===1?"":"s")+" fixed on your own.");
+});
+
+/* ---------------- progress / storage ----------------
+   No accounts on a public site, so progress lives in THIS browser only
+   (localStorage) -- simple and private, but it won't follow a student to a
+   different device or survive them clearing site data. */
+var PROGRESS_KEY = "secondlook_sessions_v1";
+function loadProgress(){
+  try{
+    var raw = localStorage.getItem(PROGRESS_KEY);
+    if (raw){
+      var parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) state.sessions = parsed;
+    }
+  }catch(e){}
+  renderProgress();
+}
+function saveProgress(){
+  renderProgress();
+  try{ localStorage.setItem(PROGRESS_KEY, JSON.stringify(state.sessions)); }catch(e){}
+}
+
+function renderProgress(){
+  var grid = document.getElementById('statGrid');
+  var chart = document.getElementById('chart');
+  var bars = document.getElementById('bars');
+  var s = state.sessions;
+  if (!s.length){
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">No sessions yet — finish a check on the Write tab to start tracking progress.</div>';
+    chart.innerHTML = '';
+    bars.innerHTML = '';
+    return;
+  }
+  var totalWords = s.reduce(function(a,r){return a+r.words;},0);
+  var totalErrors = s.reduce(function(a,r){return a+r.total;},0);
+  var totalFixed = s.reduce(function(a,r){return a+r.selfFixed;},0);
+  var rate = totalErrors ? Math.round(100*totalFixed/totalErrors) : 100;
+  grid.innerHTML =
+    stat(s.length, s.length===1?'paragraph checked':'paragraphs checked') +
+    stat(totalWords, 'words written') +
+    stat(rate+'%', 'self-corrected') +
+    stat(totalErrors, 'spots found total');
+
+  function stat(num,lbl){ return '<div class="stat"><div class="num">'+num+'</div><div class="lbl">'+lbl+'</div></div>'; }
+
+  // chart: self-correction rate per session (line), scaled 0-100
+  var w=720,h=180,pad=28;
+  var pts = s.map(function(r){ return r.total ? Math.round(100*r.selfFixed/r.total) : 100; });
+  var n = pts.length;
+  var stepX = n>1 ? (w-2*pad)/(n-1) : 0;
+  function xy(i){ return [pad+i*stepX, h-pad-(pts[i]/100)*(h-2*pad)]; }
+  var path = pts.map(function(p,i){ var xy_=xy(i); return (i===0?'M':'L')+xy_[0].toFixed(1)+','+xy_[1].toFixed(1); }).join(' ');
+  var first = xy(0), last = xy(n-1);
+  var svg = '<svg viewBox="0 0 '+w+' '+h+'" width="100%" style="max-width:'+w+'px;display:block;" role="img" aria-label="Self-correction rate over time">'+
+    '<line x1="'+pad+'" y1="'+(h-pad)+'" x2="'+(w-pad)+'" y2="'+(h-pad)+'" stroke="var(--border)" stroke-width="1"/>' +
+    '<line x1="'+pad+'" y1="'+pad+'" x2="'+(w-pad)+'" y2="'+pad+'" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,4"/>' +
+    '<text x="'+pad+'" y="'+(pad-8)+'" font-size="11" fill="var(--text-muted)">100%</text>' +
+    '<text x="'+pad+'" y="'+(h-pad+16)+'" font-size="11" fill="var(--text-muted)">0%</text>' +
+    '<path d="'+path+'" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<circle cx="'+first[0]+'" cy="'+first[1]+'" r="4" fill="var(--accent)"/>' +
+    '<circle cx="'+last[0]+'" cy="'+last[1]+'" r="4.5" fill="var(--accent-strong)"/>' +
+    '<text x="'+last[0]+'" y="'+(last[1]-10)+'" font-size="12" font-weight="700" fill="var(--accent-strong)" text-anchor="end">'+pts[n-1]+'%</text>' +
+    '</svg>';
+  chart.innerHTML = svg + '<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">each point = one checked paragraph, oldest to newest</div>';
+
+  var typeTotals = {spelling:0, grammar:0, punctuation:0, wordChoice:0};
+  s.forEach(function(r){ typeTotals.spelling+=r.spelling||0; typeTotals.grammar+=r.grammar||0; typeTotals.punctuation+=r.punctuation||0; typeTotals.wordChoice+=r.wordChoice||0; });
+  var maxT = Math.max(1, typeTotals.spelling, typeTotals.grammar, typeTotals.punctuation, typeTotals.wordChoice);
+  var labels = [['Spelling','spelling','warn'],['Grammar','grammar','info'],['Punctuation','punctuation','special'],['Wrong word','wordChoice','confusable']];
+  bars.innerHTML = labels.map(function(l){
+    var val = typeTotals[l[1]];
+    var pct = Math.round(100*val/maxT);
+    return '<div class="bar-row"><span>'+l[0]+'</span><div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:var(--'+l[2]+')"></div></div><span style="text-align:right;">'+val+'</span></div>';
+  }).join('');
+}
+
+loadProgress();
+})();
+</script>
+</body>
+</html>
