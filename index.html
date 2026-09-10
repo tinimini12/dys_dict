@@ -239,6 +239,7 @@ button.btn.mic.listening{background:var(--warn); border-color:var(--warn); color
         <input type="checkbox" id="useAI" checked>
         <label for="useAI">Use the deeper AI check for tricky mix-ups (takes up to a minute)</label>
       </div>
+      <div class="ai-usage-info" id="aiUsageInfo" style="font-size:12px;opacity:0.7;margin:2px 0 8px;"></div>
 
       <div class="status" id="status"></div>
       <div id="banners"></div>
@@ -327,25 +328,48 @@ var MODEL_PRICING = {
   "gpt-5-mini": { input: 0.25 / 1e6, output: 2.00 / 1e6 },
   "gpt-5-nano": { input: 0.05 / 1e6, output: 0.40 / 1e6 }
 };
-var SESSION_COST_KEY = "secondlook_session_cost_v1";
-function getSessionCost(){
+var SESSION_USAGE_KEY = "secondlook_session_usage_v1";
+function getSessionUsage(){
   try{
-    var n = parseFloat(sessionStorage.getItem(SESSION_COST_KEY));
-    return isFinite(n) ? n : 0;
-  }catch(e){ return 0; }
+    var raw = JSON.parse(sessionStorage.getItem(SESSION_USAGE_KEY));
+    if (raw && isFinite(raw.cost) && isFinite(raw.tokens)) return raw;
+  }catch(e){}
+  return { cost: 0, tokens: 0, calls: 0 };
 }
-function addSessionCost(usd){
-  try{ sessionStorage.setItem(SESSION_COST_KEY, String(getSessionCost() + usd)); }catch(e){}
+function addSessionUsage(usd, tokens){
+  var cur = getSessionUsage();
+  var next = { cost: cur.cost + usd, tokens: cur.tokens + tokens, calls: cur.calls + 1 };
+  try{ sessionStorage.setItem(SESSION_USAGE_KEY, JSON.stringify(next)); }catch(e){}
+  renderAIUsage(next);
+  return next;
 }
 function sessionBudgetLeft(){
-  return SESSION_BUDGET_USD - getSessionCost();
+  return SESSION_BUDGET_USD - getSessionUsage().cost;
 }
 function recordUsageCost(model, usage){
   if (!usage) return;
   var rate = MODEL_PRICING[model];
   if (!rate) return;
-  var cost = (usage.prompt_tokens || 0) * rate.input + (usage.completion_tokens || 0) * rate.output;
-  addSessionCost(cost);
+  var promptTok = usage.prompt_tokens || 0;
+  var completionTok = usage.completion_tokens || 0;
+  var cost = promptTok * rate.input + completionTok * rate.output;
+  addSessionUsage(cost, promptTok + completionTok);
+}
+// Small always-visible readout of this session's real AI usage, right under
+// the AI checkbox -- so "how much is this costing me" isn't a number that
+// only shows up later in your OpenAI dashboard.
+function renderAIUsage(usage){
+  usage = usage || getSessionUsage();
+  var el = document.getElementById('aiUsageInfo');
+  if (!el) return;
+  if (!aiConfigured()){
+    el.textContent = "";
+    return;
+  }
+  var costStr = "$" + usage.cost.toFixed(usage.cost > 0 && usage.cost < 0.01 ? 4 : 2);
+  var pct = Math.min(100, Math.round((usage.cost / SESSION_BUDGET_USD) * 100));
+  el.textContent = "This session's AI usage: " + usage.tokens.toLocaleString() + " tokens · " +
+    costStr + " of $" + SESSION_BUDGET_USD.toFixed(2) + " session budget (" + pct + "%)";
 }
 
 function parseJsonLoose(text){
@@ -1137,6 +1161,7 @@ function renderProgress(){
 }
 
 loadProgress();
+renderAIUsage();
 })();
 </script>
 </body>
