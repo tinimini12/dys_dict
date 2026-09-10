@@ -65,7 +65,10 @@ export default {
         },
         body: JSON.stringify({
           model: model,
-          max_tokens: maxTokens,
+          // gpt-5-family models reject the older "max_tokens" param and
+          // require "max_completion_tokens" instead (OpenAI returns a
+          // clear "unsupported_parameter" error if you get this wrong).
+          max_completion_tokens: maxTokens,
           messages: [{ role: "user", content: prompt }],
         }),
       });
