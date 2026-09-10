@@ -307,6 +307,47 @@ button.btn.mic.listening{background:var(--warn); border-color:var(--warn); color
 var WORKER_URL = "https://second-look-ai.diya2010gupta.workers.dev";
 function aiConfigured(){ return WORKER_URL && WORKER_URL.indexOf("YOUR-WORKER") === -1; }
 
+/* ---------------- per-session cost budget ----------------
+   This site's AI check is billed to YOUR OpenAI key for every visitor, so a
+   public page needs a real spending guardrail, not just a polite ask. Every
+   AI call reports back the exact token counts OpenAI billed for it; this
+   converts those to real dollars (using OpenAI's list price -- update
+   MODEL_PRICING if pricing changes) and keeps a running total in
+   sessionStorage. Once one browser session crosses SESSION_BUDGET_USD, the
+   AI check quietly turns itself off for the rest of that session -- the
+   instant/local check keeps working either way. sessionStorage clears when
+   the tab/browser closes, so this bounds one sitting, not one visitor
+   forever; it's a guard against runaway/accidental usage, not abuse from
+   someone deliberately opening fresh tabs -- see README-deploy.md for
+   server-side options if that matters for you. */
+var SESSION_BUDGET_USD = 0.20;
+var MODEL_PRICING = {
+  // dollars per token = list price per 1M tokens / 1,000,000 (checked Sept 2026;
+  // re-check platform.openai.com/docs/pricing if these models' prices move)
+  "gpt-5-mini": { input: 0.25 / 1e6, output: 2.00 / 1e6 },
+  "gpt-5-nano": { input: 0.05 / 1e6, output: 0.40 / 1e6 }
+};
+var SESSION_COST_KEY = "secondlook_session_cost_v1";
+function getSessionCost(){
+  try{
+    var n = parseFloat(sessionStorage.getItem(SESSION_COST_KEY));
+    return isFinite(n) ? n : 0;
+  }catch(e){ return 0; }
+}
+function addSessionCost(usd){
+  try{ sessionStorage.setItem(SESSION_COST_KEY, String(getSessionCost() + usd)); }catch(e){}
+}
+function sessionBudgetLeft(){
+  return SESSION_BUDGET_USD - getSessionCost();
+}
+function recordUsageCost(model, usage){
+  if (!usage) return;
+  var rate = MODEL_PRICING[model];
+  if (!rate) return;
+  var cost = (usage.prompt_tokens || 0) * rate.input + (usage.completion_tokens || 0) * rate.output;
+  addSessionCost(cost);
+}
+
 function parseJsonLoose(text){
   if (!text) throw new Error("empty AI response");
   var m = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -316,6 +357,11 @@ function parseJsonLoose(text){
   return JSON.parse(text.slice(start));
 }
 async function callAI(prompt, model, maxTokens){
+  if (sessionBudgetLeft() <= 0){
+    var budgetErr = new Error("this session's AI budget is used up");
+    budgetErr.status = 'budget';
+    throw budgetErr;
+  }
   var resp;
   try {
     resp = await fetch(WORKER_URL + "/ai", {
@@ -334,6 +380,7 @@ async function callAI(prompt, model, maxTokens){
     throw err;
   }
   var data = await resp.json();
+  recordUsageCost(data.model || model, data.usage);
   return parseJsonLoose(data.text || "");
 }
 
@@ -964,7 +1011,9 @@ async function runAIPass(text, localFlags){
     renderReviewed();
     setStatus("Deeper check complete — "+state.flags.filter(function(f){return f.status==='open';}).length+" spot"+(state.flags.length===1?"":"s")+" to look at.");
   }catch(e){
-    if (e && e.status === 429){
+    if (e && e.status === 'budget'){
+      showBanner('info', "This session's deeper AI check budget is used up — the instant check still works great on its own. Reload the page to start a fresh session.");
+    } else if (e && e.status === 429){
       showBanner('warn', "You've used a lot of AI checks right now — try again in a bit. Instant results are still shown.");
     } else if (e && e.status === 0){
       showBanner('warn', "Couldn't reach the AI backend — showing the instant results only.");

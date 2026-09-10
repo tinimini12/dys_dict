@@ -15,6 +15,12 @@
  */
 
 const DEFAULT_MODEL = "gpt-5-mini";
+// This endpoint is public and unauthenticated -- anyone can POST to it directly,
+// not just through index.html's JS. Without this allow-list, a visitor could
+// pass model:"gpt-5" (or any pricier model) straight in the request body and
+// run up your OpenAI bill on a model this app never intended to use. Any
+// requested model outside this list is ignored in favor of DEFAULT_MODEL.
+const ALLOWED_MODELS = ["gpt-5-mini", "gpt-5-nano"];
 const MAX_PROMPT_CHARS = 8000;     // guards against someone sending huge/abusive requests
 const MAX_TOKENS_CAP = 3000;       // hard ceiling regardless of what the client asks for
 // gpt-5-family models spend part of max_completion_tokens on invisible internal
@@ -55,7 +61,7 @@ export default {
     if (!prompt.trim()) {
       return json({ error: "empty_prompt" }, 400, cors);
     }
-    const model = typeof body.model === "string" && body.model ? body.model : DEFAULT_MODEL;
+    const model = typeof body.model === "string" && ALLOWED_MODELS.indexOf(body.model) !== -1 ? body.model : DEFAULT_MODEL;
     const maxTokens = Math.min(
       Number.isFinite(body.maxTokens) ? Math.max(1, Math.floor(body.maxTokens)) : 800,
       MAX_TOKENS_CAP
@@ -103,7 +109,12 @@ export default {
       return json({ error: "upstream_bad_json" }, 502, cors);
     }
     const text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
-    return json({ text: text }, 200, cors);
+    // Pass OpenAI's own token-usage numbers back to the page. The page uses
+    // these (not a guess) to track real spend per browser session and stop
+    // calling the AI once a visitor's session has used up its budget --
+    // see the SESSION_BUDGET_USD constant in index.html.
+    const usage = data.usage || null;
+    return json({ text: text, usage: usage, model: model }, 200, cors);
   },
 };
 

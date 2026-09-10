@@ -140,20 +140,56 @@ restriction.
 
 ---
 
-## Optional hardening, once this gets real traffic
+## Cost safeguards already built in
 
-None of this is required to get it working — just worth knowing about if
-the link starts circulating:
+Three things keep this from running up an unexpected bill, in order of how
+strong a guarantee each one actually gives:
 
+1. **A real per-session dollar cap ($0.20 by default).** Every AI call gets
+   back the exact token counts OpenAI billed for it, and `index.html` turns
+   those into real dollars using OpenAI's list price (`MODEL_PRICING` near
+   the top of the AI-related script — currently gpt-5-mini at $0.25/1M input
+   + $2.00/1M output, gpt-5-nano at $0.05/1M input + $0.40/1M output; these
+   are OpenAI's published rates as of September 2026, re-check
+   [platform.openai.com/docs/pricing](https://platform.openai.com/docs/pricing)
+   if you ever suspect they've changed). It keeps a running total per browser
+   tab in `sessionStorage`; once a session crosses `SESSION_BUDGET_USD`, the
+   AI check quietly turns itself off for the rest of that session — the
+   instant/local check keeps working regardless. In practice this is a very
+   generous ceiling: at these prices, one full-paragraph AI check costs well
+   under a cent, so $0.20 covers dozens of checks per sitting.
+   **The honest limit:** this only bounds *one browser session*. It's
+   `sessionStorage`, so it resets the moment someone opens a new tab or
+   closes and reopens the old one — it protects against an accidental
+   runaway loop or a student mashing the check button, not against someone
+   deliberately trying to run up your bill.
+2. **The Worker only ever calls `gpt-5-mini` or `gpt-5-nano`, no matter what
+   a request asks for.** Since this endpoint is public and unauthenticated,
+   anyone could otherwise bypass your page entirely and POST directly to
+   your Worker URL asking for a pricier model — the `ALLOWED_MODELS`
+   allow-list in `worker.js` closes that off.
+3. **`MAX_PROMPT_CHARS` and `MAX_TOKENS_CAP`** in `worker.js` put a hard
+   ceiling on the size of any single request/response regardless of what's
+   asked for, so one abusive call can only cost so much.
+
+None of that stops a determined person from just opening many tabs (or
+calling your Worker directly from a script) to rack up many small charges —
+that requires the two steps below, and neither is required just to get this
+working:
+
+- **Add a Cloudflare rate-limiting rule** on the Worker's route (dashboard →
+  your Worker → **Triggers**/**Security** → rate limiting) to cap requests
+  per visitor IP per minute — this is the actual server-side backstop
+  against someone hammering the endpoint directly, since sessionStorage
+  can't see across tabs or people.
 - **Restrict the Worker's CORS to your real domain.** Right now
   `ALLOWED_ORIGIN` is set to `*` in `wrangler.toml` (anyone's page can call
   your Worker). Once you know your site's real URL, change it to that exact
   origin (e.g. `https://tinimini12.github.io`) and redeploy — this stops
-  other sites from quietly using your API key through your Worker.
-- **Add a Cloudflare rate-limiting rule** on the Worker's route (dashboard →
-  your Worker → **Triggers**/**Security** → rate limiting) to cap requests
-  per visitor per minute, as a backstop against abuse or a runaway bug
-  racking up API costs.
+  *other sites'* pages from quietly using your API key through your Worker
+  (it doesn't stop someone calling the Worker directly with curl/a script,
+  since that's not subject to CORS at all — only the rate-limiting rule
+  above covers that case).
 - **Watch usage** at [platform.openai.com/usage](https://platform.openai.com/usage)
   the first week or two after sharing it widely, so a cost surprise doesn't
   sneak up on you.
