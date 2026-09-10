@@ -2,19 +2,19 @@
  * Second Look -- AI backend (Cloudflare Worker)
  *
  * This is the one piece that has to live on a server instead of in the
- * browser: it holds your real Anthropic API key and makes the actual model
+ * browser: it holds your real OpenAI API key and makes the actual model
  * call, so a public visitor's browser never sees the key. The page sends it
  * an already-written prompt and gets back the model's raw text reply; all
- * the "what should the prompt say" logic stays in public_index.html so you
- * can tweak wording without redeploying this file.
+ * the "what should the prompt say" logic stays in index.html so you can
+ * tweak wording without redeploying this file.
  *
  * Deploy: see README-deploy.md in this same folder for the full walkthrough.
- * You will set ANTHROPIC_API_KEY yourself, directly in the Cloudflare
+ * You will set OPENAI_API_KEY yourself, directly in the Cloudflare
  * dashboard or via `wrangler secret put` -- never paste it into this file,
  * and never send it to anyone (including Claude) to type in for you.
  */
 
-const DEFAULT_MODEL = "claude-sonnet-5";
+const DEFAULT_MODEL = "gpt-5-mini";
 const MAX_PROMPT_CHARS = 8000;     // guards against someone sending huge/abusive requests
 const MAX_TOKENS_CAP = 1500;       // hard ceiling regardless of what the client asks for
 
@@ -33,7 +33,7 @@ export default {
     if (request.method !== "POST") {
       return json({ error: "method_not_allowed" }, 405, cors);
     }
-    if (!env.ANTHROPIC_API_KEY) {
+    if (!env.OPENAI_API_KEY) {
       // you deployed the Worker but haven't set the secret yet -- see README-deploy.md
       return json({ error: "server_not_configured" }, 500, cors);
     }
@@ -55,14 +55,13 @@ export default {
       MAX_TOKENS_CAP
     );
 
-    let anthropicResp;
+    let openaiResp;
     try {
-      anthropicResp = await fetch("https://api.anthropic.com/v1/messages", {
+      openaiResp = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
-          "x-api-key": env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
+          "Authorization": "Bearer " + env.OPENAI_API_KEY,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           model: model,
@@ -74,23 +73,26 @@ export default {
       return json({ error: "upstream_network_error" }, 502, cors);
     }
 
-    if (anthropicResp.status === 429) {
-      // pass Anthropic's own rate-limit signal straight through so the page
+    if (openaiResp.status === 429) {
+      // pass OpenAI's own rate-limit signal straight through so the page
       // can show "try again in a bit" instead of a generic failure
       return json({ error: "rate_limited" }, 429, cors);
     }
-    if (!anthropicResp.ok) {
-      const detail = await safeText(anthropicResp);
+    if (!openaiResp.ok) {
+      const detail = await safeText(openaiResp);
+      // surfaced (truncated) so a wrong/retired model name shows up as a readable
+      // error instead of a silent failure -- OpenAI's model lineup shifts over time,
+      // check https://platform.openai.com/docs/models if this ever complains about DEFAULT_MODEL
       return json({ error: "upstream_error", detail: detail.slice(0, 500) }, 502, cors);
     }
 
     let data;
     try {
-      data = await anthropicResp.json();
+      data = await openaiResp.json();
     } catch (e) {
       return json({ error: "upstream_bad_json" }, 502, cors);
     }
-    const text = (data.content && data.content[0] && data.content[0].text) || "";
+    const text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
     return json({ text: text }, 200, cors);
   },
 };

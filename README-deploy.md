@@ -4,7 +4,7 @@ This turns "Second Look" from a private Claude Artifact into a real public
 website anyone can open, with no Claude account required. There are two
 pieces, and they get deployed separately:
 
-1. **`worker.js`** — a tiny backend that holds your Anthropic API key and
+1. **`worker.js`** — a tiny backend that holds your OpenAI API key and
    makes the AI-check call. It never touches the browser directly.
 2. **`index.html`** — the actual site. Static HTML/CSS/JS, hostable
    anywhere. Talks to the Worker over the network for the AI check; does
@@ -17,23 +17,30 @@ type in API keys and payment info is an assistant that's dangerous to have
 around).
 
 **Cost note up front:** every visitor who runs the deeper AI check spends a
-little of *your* Anthropic API budget (Claude's own usage, not theirs — that
-was the whole tradeoff of making this public instead of gating it behind
-Claude accounts). Keep an eye on usage at [console.anthropic.com](https://console.anthropic.com)
-early on, especially once you share the link widely.
+little of *your* OpenAI API budget (not theirs — that was the whole tradeoff
+of making this public instead of gating it behind Claude accounts). Keep an
+eye on usage at [platform.openai.com/usage](https://platform.openai.com/usage)
+early on, especially once you share the link widely. The two models this
+uses by default — `gpt-5-mini` for the full paragraph check, `gpt-5-nano`
+for the quick single-word voice clarification — are OpenAI's cheaper tiers;
+check [platform.openai.com/docs/models](https://platform.openai.com/docs/models)
+if either name ever stops working (model lineups shift over time) and swap
+the model strings in `index.html` and `worker.js`'s `DEFAULT_MODEL`.
 
 ---
 
 ## Part 1 — Deploy the AI backend (Cloudflare Worker)
 
 Cloudflare Workers has a generous free tier (100,000 requests/day) and this
-needs almost none of that, so it costs nothing to run beyond your Anthropic
+needs almost none of that, so it costs nothing to run beyond your OpenAI
 API usage.
 
-1. **Get an Anthropic API key**, if you don't have one already: sign in at
-   [console.anthropic.com](https://console.anthropic.com) → **API Keys** →
-   **Create Key**. Copy it somewhere safe for a moment — you'll paste it
-   directly into Cloudflare in step 4, not anywhere else.
+1. **Get an OpenAI API key**, if you don't have one already: sign in at
+   [platform.openai.com](https://platform.openai.com) → **API Keys** →
+   **Create new secret key**. Copy it somewhere safe for a moment — you'll
+   paste it directly into Cloudflare in step 4, not anywhere else. (This is
+   a separate account/surface from ChatGPT's consumer app, same as how
+   Anthropic's API keys live on a separate console from Claude.ai.)
 
 2. **Create a free Cloudflare account** at [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up)
    if you don't have one.
@@ -61,7 +68,7 @@ API usage.
    Cloudflare dashboard, never by pasting it into a chat with Claude):
 
    ```bash
-   wrangler secret put ANTHROPIC_API_KEY
+   wrangler secret put OPENAI_API_KEY
    ```
 
    It'll prompt you to paste the key. This stores it encrypted on
@@ -71,7 +78,7 @@ API usage.
    to **Workers & Pages** → **Create** → **Create Worker**, give it a name,
    click through to the editor, paste in the contents of `worker.js`,
    **Deploy**. Then go to that Worker's **Settings → Variables and Secrets**,
-   add a secret named `ANTHROPIC_API_KEY` with your key as the value, save.
+   add a secret named `OPENAI_API_KEY` with your key as the value, save.
 
 5. **Test it's alive** (optional but reassuring):
 
@@ -141,13 +148,13 @@ the link starts circulating:
 - **Restrict the Worker's CORS to your real domain.** Right now
   `ALLOWED_ORIGIN` is set to `*` in `wrangler.toml` (anyone's page can call
   your Worker). Once you know your site's real URL, change it to that exact
-  origin (e.g. `https://second-look.pages.dev`) and redeploy — this stops
+  origin (e.g. `https://tinimini12.github.io`) and redeploy — this stops
   other sites from quietly using your API key through your Worker.
 - **Add a Cloudflare rate-limiting rule** on the Worker's route (dashboard →
   your Worker → **Triggers**/**Security** → rate limiting) to cap requests
   per visitor per minute, as a backstop against abuse or a runaway bug
   racking up API costs.
-- **Watch usage** at [console.anthropic.com](https://console.anthropic.com)
+- **Watch usage** at [platform.openai.com/usage](https://platform.openai.com/usage)
   the first week or two after sharing it widely, so a cost surprise doesn't
   sneak up on you.
 
@@ -156,8 +163,11 @@ the link starts circulating:
 ## What's different from the private (Claude Artifact) version
 
 - **AI check**: was "free" to you because each viewer spent their own Claude
-  usage; now it's billed to your Anthropic API key for every visitor. Same
-  underlying model call and prompt, so quality should be unchanged.
+  usage; now it's billed to your OpenAI API key for every visitor, using
+  OpenAI's models instead of Claude's. The prompts and merge logic are
+  unchanged, so behavior should be comparable, but it's a different model
+  family underneath — worth spot-checking against the original test
+  paragraphs once it's live.
 - **Progress tracking**: was a shared database visible from any device; now
   it's `localStorage`, so it's private to one browser and won't follow a
   student across devices or survive them clearing site data. If you want

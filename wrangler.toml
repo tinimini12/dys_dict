@@ -2,7 +2,7 @@ name = "second-look-ai"
 main = "worker.js"
 compatibility_date = "2026-09-01"
 
-# Set with: wrangler secret put ANTHROPIC_API_KEY
+# Set with: wrangler secret put OPENAI_API_KEY
 # (never put the real key in this file -- it's meant to be checked into git)
 
 [vars]

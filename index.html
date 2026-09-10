@@ -299,7 +299,7 @@ button.btn.mic.listening{background:var(--warn); border-color:var(--warn); color
 
 /* ---------------- backend config ----------------
    Second Look needs a tiny server-side piece for the AI check, because a
-   public page can't hold a real Anthropic API key (anyone viewing the page's
+   public page can't hold a real OpenAI API key (anyone viewing the page's
    source could steal it and run up your bill). worker.js in this same
    folder is that server-side piece -- deploy it once (see README-deploy.md),
    then paste the URL it gives you below. Until you do, the AI check quietly
@@ -830,7 +830,7 @@ async function handleSpokenWord(transcript){
       "It might be wrong. They just said the word out loud to help explain what they meant, and it sounded like \""+heard+"\". "+
       "Using BOTH how they spelled it and how it sounded, figure out the one correctly-spelled English word that fits the sentence. "+
       "Reply with ONLY a JSON object like {\"suggestion\":\"garden\",\"explanation\":\"one short, warm sentence a child would understand\"}.";
-    var result = await callAI(prompt, "claude-haiku-4-5-20251001", 300);
+    var result = await callAI(prompt, "gpt-5-nano", 300);
     if (result && typeof result.suggestion === 'string'){
       f.suggestion = matchCase(f.original, result.suggestion);
       f.explanation = result.explanation || ("Based on how you said it, this should be “"+result.suggestion+"”.");
@@ -921,7 +921,7 @@ async function runAIPass(text, localFlags){
   }
   try{
     var prompt = buildPrompt(text, localFlags);
-    var result = await callAI(prompt, "claude-sonnet-5", 1200);
+    var result = await callAI(prompt, "gpt-5-mini", 1200);
     if (!Array.isArray(result)) throw new Error("bad shape");
     var used = state.flags.map(function(f){ return {start:f.start,end:f.end}; });
     var aiLocs = []; // exact spans the AI actually confirmed, for precise per-occurrence noise reduction below
