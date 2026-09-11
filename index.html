@@ -200,6 +200,13 @@ button.btn.mic.listening{background:var(--warn); border-color:var(--warn); color
 .bar-track{background:var(--surface-2); border-radius:999px; height:10px; overflow:hidden;}
 .bar-fill{height:100%; border-radius:999px;}
 .empty-state{color:var(--text-muted); font-size:14.5px; text-align:center; padding:30px 10px;}
+.combo-list{display:flex; flex-direction:column; gap:10px;}
+.combo-row{display:flex; align-items:center; justify-content:space-between; gap:12px; background:var(--surface-2); border-radius:12px; padding:10px 14px;}
+.combo-pattern{font-size:15px; font-weight:700;}
+.combo-pattern .arrow{color:var(--text-muted); font-weight:400; margin:0 6px;}
+.combo-pattern em{color:var(--text-muted); font-style:normal; font-weight:600;}
+.combo-examples{font-size:12.5px; color:var(--text-muted); margin-top:3px;}
+.combo-count{font-size:13px; font-weight:700; color:var(--accent-strong); background:var(--surface); border-radius:999px; padding:4px 11px; white-space:nowrap;}
 </style>
 
 </head>
@@ -268,6 +275,10 @@ button.btn.mic.listening{background:var(--warn); border-color:var(--warn); color
       <h3>What tends to trip you up</h3>
       <div class="bars" id="bars"></div>
     </div>
+    <div class="card breakdown">
+      <h3>Spelling patterns you keep mixing up</h3>
+      <div class="combo-list" id="comboPairs"></div>
+    </div>
   </div>
 </div>
 
@@ -305,7 +316,7 @@ button.btn.mic.listening{background:var(--warn); border-color:var(--warn); color
    folder is that server-side piece -- deploy it once (see README-deploy.md),
    then paste the URL it gives you below. Until you do, the AI check quietly
    stays off and only the free instant/local check runs. */
-var WORKER_URL = "https://second-look-ai.diya2010gupta.workers.dev";
+var WORKER_URL = "https://YOUR-WORKER-SUBDOMAIN.workers.dev";
 function aiConfigured(){ return WORKER_URL && WORKER_URL.indexOf("YOUR-WORKER") === -1; }
 
 /* ---------------- per-session cost budget ----------------
@@ -500,6 +511,47 @@ function isPlausibleSpellingFix(original, candidate){
   var lo = original.toLowerCase().replace(/[^a-z']/g,'');
   if (editDistance(lo, lc, 2) <= 2) return true;
   return phoneticKey(lo) === phoneticKey(lc);
+}
+
+// Trims the letters an original misspelling and its correction share at the start
+// and end, leaving just the piece that actually changed (e.g. "liyt" -> "late" boils
+// down to "iyt" -> "ate"; "sumer" -> "summer" boils down to a dropped "m"). This is
+// what lets the progress tab show the STUDENT'S actual recurring mix-up -- the same
+// kind of letter swap or drop showing up across different words -- instead of just
+// listing every misspelled word once, which wouldn't reveal any pattern at all.
+function extractSpellingPattern(original, corrected){
+  var a = (original||'').toLowerCase().replace(/[^a-z]/g,'');
+  var b = (corrected||'').toLowerCase().replace(/[^a-z]/g,'');
+  if (!a || !b || a === b) return null;
+  var i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  var j = 0;
+  while (j < a.length-i && j < b.length-i && a[a.length-1-j] === b[b.length-1-j]) j++;
+  var from = a.slice(i, a.length-j);
+  var to = b.slice(i, b.length-j);
+  if (!from && !to) return null;
+  return { from: from, to: to };
+}
+
+// isPlausibleSpellingFix() above only catches fixes that are still "close" to the
+// original garbled spelling -- in letters or in how it sounds. But a student sounding
+// out a hard word can land on a real, correct word that's actually quite FAR from
+// their misspelling both ways (e.g. writing "liyt" while meaning "late", not "lit" --
+// close-ish in letters, but the wrong word for "...getting liyt, I should go to bed").
+// When the local check can't confirm a fix and the deeper AI check is turned on, ask
+// it to judge the candidate by whether it makes sense in the SENTENCE -- the same kind
+// of judgment call already used for "Say it" -- instead of by spelling closeness alone.
+async function aiWordFitsContext(f, candidate){
+  if (!aiConfigured()) return false;
+  try{
+    var before = state.text.slice(Math.max(0,f.start-70), f.start);
+    var after = state.text.slice(f.end, f.end+70);
+    var prompt = "A student with dyslexia originally wrote \""+f.original+"\" in this sentence: \""+before+"["+f.original+"]"+after+"\". "+
+      "They're now trying the word \""+candidate+"\" instead. Judging ONLY by whether \""+candidate+"\" makes sense in that exact spot given the rest of the sentence (not by how similar it looks or sounds to their original spelling), is it a good fix? "+
+      "Reply with ONLY a JSON object like {\"fits\":true} or {\"fits\":false}.";
+    var result = await callAI(prompt, "gpt-5-nano", 300);
+    return !!(result && result.fits === true);
+  }catch(e){ return false; }
 }
 
 function matchCase(sample, target){
@@ -742,7 +794,7 @@ overlay.addEventListener('click', function(e){ if (e.target===overlay) closePopo
 
 function normalize(s){ return s.trim().toLowerCase().replace(/[.,!?;:"']/g,''); }
 
-document.getElementById('popTry').addEventListener('click', function(){
+document.getElementById('popTry').addEventListener('click', async function(){
   var f = state.flags[currentFlagIndex];
   var val = popInput.value.trim();
   if (!val){ popFeedback.textContent = "Type your best guess first."; popFeedback.className="feedback"; return; }
@@ -754,8 +806,21 @@ document.getElementById('popTry').addEventListener('click', function(){
   // different-but-also-correct answer (e.g. "spine" when we guessed "spin" for
   // "spiyn") just because it doesn't match that one guess verbatim.
   var altMatch = !exactMatch && f.type === 'spelling' && f.source === 'local' && isPlausibleSpellingFix(f.original, val);
-  if (exactMatch || altMatch){
-    var accepted = exactMatch ? (target || val) : val;
+  var accepted = exactMatch ? (target || val) : (altMatch ? val : null);
+  // Still no match? If it's at least a real dictionary word and the deeper AI check is
+  // on, don't reject it purely for being spelling-distant from the original garbled
+  // word -- ask whether it actually makes sense in the sentence instead. This is what
+  // catches "liyt" -> "late" (a real fix, but not spelling-close to "liyt" at all).
+  if (!accepted && f.type === 'spelling' && f.source === 'local' && useAI.checked){
+    var lcVal = val.toLowerCase().replace(/[^a-z']/g,'');
+    if (DICT_SET.has(lcVal)){
+      popFeedback.textContent = "That's a real word — checking if it fits here…";
+      popFeedback.className = "feedback";
+      var fits = await aiWordFitsContext(f, val);
+      if (fits) accepted = val;
+    }
+  }
+  if (accepted){
     popFeedback.textContent = "✅ Nice fix!";
     popFeedback.className = "feedback good";
     f.status = 'fixed';
@@ -1085,12 +1150,22 @@ btnEditAgain.addEventListener('click', function(){
 btnFinish.addEventListener('click', function(){
   var byType = {spelling:0, grammar:0, punctuation:0, 'word choice':0};
   var fixed=0, revealed=0, skipped=0, helpRequests=0;
+  var spellingPairs = [];
   state.flags.forEach(function(f){
     if (f.type === 'ask'){ helpRequests++; return; } // self-initiated lookups aren't counted as "errors"
     byType[f.type] = (byType[f.type]||0)+1;
     if (f.status==='fixed') fixed++;
     else if (f.status==='skipped') skipped++;
     else revealed++; // open or revealed both count as "not self-fixed" for honesty
+    // Track (misspelling -> correct word) pairs for local spelling flags only -- these
+    // are the garbled-word type where the "correct" word is unambiguous, unlike a
+    // word-choice/grammar catch where "correct" depends on meaning, not letters.
+    if (f.type === 'spelling' && f.source === 'local'){
+      var corrected = (f.status === 'fixed' && f.userAnswer) ? f.userAnswer : f.suggestion;
+      if (corrected && corrected.toLowerCase() !== f.original.toLowerCase()){
+        spellingPairs.push({o: f.original, c: corrected});
+      }
+    }
   });
   var words = state.text.trim().length ? state.text.trim().split(/\s+/).length : 0;
   var errorFlagCount = state.flags.length - helpRequests;
@@ -1098,7 +1173,7 @@ btnFinish.addEventListener('click', function(){
     date: new Date().toISOString(), words:words,
     spelling: byType.spelling, grammar: byType.grammar, punctuation: byType.punctuation, wordChoice: byType['word choice'],
     total: errorFlagCount, selfFixed: fixed, revealed: revealed, skipped: skipped, helpRequests: helpRequests,
-    aiUsed: useAI.checked
+    aiUsed: useAI.checked, spellingPairs: spellingPairs
   };
   state.sessions.push(record);
   if (state.sessions.length > 100) state.sessions = state.sessions.slice(-100);
@@ -1131,11 +1206,13 @@ function renderProgress(){
   var grid = document.getElementById('statGrid');
   var chart = document.getElementById('chart');
   var bars = document.getElementById('bars');
+  var combo = document.getElementById('comboPairs');
   var s = state.sessions;
   if (!s.length){
     grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">No sessions yet — finish a check on the Write tab to start tracking progress.</div>';
     chart.innerHTML = '';
     bars.innerHTML = '';
+    combo.innerHTML = '';
     return;
   }
   var totalWords = s.reduce(function(a,r){return a+r.words;},0);
@@ -1179,6 +1256,40 @@ function renderProgress(){
     var pct = Math.round(100*val/maxT);
     return '<div class="bar-row"><span>'+l[0]+'</span><div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:var(--'+l[2]+')"></div></div><span style="text-align:right;">'+val+'</span></div>';
   }).join('');
+
+  // Aggregate every session's (misspelling -> correction) pairs into shared letter-level
+  // patterns, so a kid can see e.g. that they keep mixing up "iyt"/"ate" across several
+  // different words, not just a list of one-off typos.
+  var patternMap = {};
+  s.forEach(function(r){
+    (r.spellingPairs||[]).forEach(function(p){
+      var pat = extractSpellingPattern(p.o, p.c);
+      if (!pat) return;
+      var key = pat.from+'→'+pat.to;
+      if (!patternMap[key]) patternMap[key] = {from:pat.from, to:pat.to, count:0, examples:[]};
+      patternMap[key].count++;
+      var ex = p.o.toLowerCase()+'→'+p.c.toLowerCase();
+      if (patternMap[key].examples.indexOf(ex) === -1 && patternMap[key].examples.length < 3){
+        patternMap[key].examples.push(ex);
+      }
+    });
+  });
+  var patterns = Object.keys(patternMap).map(function(k){ return patternMap[k]; })
+    .filter(function(p){ return p.count >= 2; }) // "consistency" means it happened more than once
+    .sort(function(a,b){ return b.count - a.count; })
+    .slice(0, 6);
+  if (!patterns.length){
+    combo.innerHTML = '<div class="empty-state">No repeat patterns yet — once the same kind of letter mix-up (like swapping two letters or dropping one) shows up more than once, it’ll appear here.</div>';
+  } else {
+    combo.innerHTML = patterns.map(function(p){
+      var fromDisp = p.from ? '“'+escapeHtml(p.from)+'”' : '<em>(missing letter)</em>';
+      var toDisp = p.to ? '“'+escapeHtml(p.to)+'”' : '<em>(extra letter)</em>';
+      return '<div class="combo-row">'+
+        '<div><div class="combo-pattern">'+fromDisp+'<span class="arrow">→</span>'+toDisp+'</div>'+
+        '<div class="combo-examples">e.g. '+escapeHtml(p.examples.join(', '))+'</div></div>'+
+        '<div class="combo-count">'+p.count+'×</div></div>';
+    }).join('');
+  }
 }
 
 loadProgress();
