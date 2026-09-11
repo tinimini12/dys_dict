@@ -487,6 +487,21 @@ function bestLocalSuggestion(word){
   return {suggestion:null, confidence:'low'};
 }
 
+// bestLocalSuggestion() above only ever returns its single closest-edit-distance
+// guess -- but a garbled spelling can have more than one valid fix (e.g. "spiyn"
+// is genuinely close to both "spin" and "spine"). This checks a student's OWN
+// different answer against the same closeness rules used to generate that one
+// guess, instead of requiring an exact match to it -- so "Check my fix" doesn't
+// tell a student they're wrong just because they landed on a different real,
+// close-enough word than our algorithm's single pick.
+function isPlausibleSpellingFix(original, candidate){
+  var lc = candidate.trim().toLowerCase().replace(/[^a-z']/g,'');
+  if (!lc || !DICT_SET.has(lc)) return false;
+  var lo = original.toLowerCase().replace(/[^a-z']/g,'');
+  if (editDistance(lo, lc, 2) <= 2) return true;
+  return phoneticKey(lo) === phoneticKey(lc);
+}
+
 function matchCase(sample, target){
   if (sample === sample.toUpperCase() && sample !== sample.toLowerCase()) return target.toUpperCase();
   if (sample[0] === sample[0].toUpperCase()) return target.charAt(0).toUpperCase()+target.slice(1);
@@ -733,13 +748,19 @@ document.getElementById('popTry').addEventListener('click', function(){
   if (!val){ popFeedback.textContent = "Type your best guess first."; popFeedback.className="feedback"; return; }
   f.userAnswer = val;
   var target = f.suggestion;
-  var isMatch = target ? normalize(val) === normalize(target) : normalize(val) !== normalize(f.original);
-  if (isMatch){
+  var exactMatch = target ? normalize(val) === normalize(target) : normalize(val) !== normalize(f.original);
+  // A misspelled word can have more than one valid fix, but our local suggester
+  // only ever offers its single closest guess -- don't reject a student's
+  // different-but-also-correct answer (e.g. "spine" when we guessed "spin" for
+  // "spiyn") just because it doesn't match that one guess verbatim.
+  var altMatch = !exactMatch && f.type === 'spelling' && f.source === 'local' && isPlausibleSpellingFix(f.original, val);
+  if (exactMatch || altMatch){
+    var accepted = exactMatch ? (target || val) : val;
     popFeedback.textContent = "✅ Nice fix!";
     popFeedback.className = "feedback good";
     f.status = 'fixed';
-    spliceText(currentFlagIndex, target || val);
-    speak((target||val));
+    spliceText(currentFlagIndex, accepted);
+    speak(accepted);
     setTimeout(function(){ closePopover(); renderReviewed(); checkAllResolved(); }, 700);
   } else {
     popFeedback.textContent = "Not quite — want a hint? Try “Hear it” or “Show me”.";
