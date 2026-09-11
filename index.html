@@ -315,8 +315,17 @@ button.btn.mic.listening{background:var(--warn); border-color:var(--warn); color
    source could steal it and run up your bill). worker.js in this same
    folder is that server-side piece -- deploy it once (see README-deploy.md),
    then paste the URL it gives you below. Until you do, the AI check quietly
-   stays off and only the free instant/local check runs. */
-var WORKER_URL = "https://YOUR-WORKER-SUBDOMAIN.workers.dev";
+   stays off and only the free instant/local check runs.
+
+   This IS the real, deployed worker (confirmed alive and responding as of
+   this build) -- do not reset this back to a placeholder value on a future
+   rebuild. That happened once already (a rebuild
+   for an unrelated feature silently dropped this real URL back to the
+   placeholder, quietly turning the deeper AI check off in production with
+   no error anywhere), which is exactly the kind of regression this comment
+   exists to prevent. If you ever redeploy the worker to a new URL, update
+   the literal string below, not just the running worker. */
+var WORKER_URL = "https://second-look-ai.diya2010gupta.workers.dev";
 function aiConfigured(){ return WORKER_URL && WORKER_URL.indexOf("YOUR-WORKER") === -1; }
 
 /* ---------------- per-session cost budget ----------------
@@ -509,7 +518,15 @@ function isPlausibleSpellingFix(original, candidate){
   var lc = candidate.trim().toLowerCase().replace(/[^a-z']/g,'');
   if (!lc || !DICT_SET.has(lc)) return false;
   var lo = original.toLowerCase().replace(/[^a-z']/g,'');
-  if (editDistance(lo, lc, 2) <= 2) return true;
+  // A flat "within 2 edits" allowance is fair for a longer word but far too loose
+  // for a short one: 2 edits can rewrite most of a 3-4 letter word into almost
+  // anything real-word-shaped (e.g. "ove" -> "ok" is only 2 edits away, but that's
+  // not a fix -- it's a different, nonsensical word that happens to be short
+  // enough for 2 edits to cover). Scale the allowance down for short originals so
+  // a fix has to be genuinely close, not just short enough for the flat cap to
+  // swallow the whole word.
+  var maxDist = lo.length <= 4 ? 1 : 2;
+  if (editDistance(lo, lc, maxDist) <= maxDist) return true;
   return phoneticKey(lo) === phoneticKey(lc);
 }
 
